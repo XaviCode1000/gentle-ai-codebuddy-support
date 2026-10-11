@@ -28,6 +28,9 @@ var NativeAgentManifest = map[model.AgentID][]string{
 	model.AgentKiroIDE:    {"jd-fix-agent.md", "jd-judge-a.md", "jd-judge-b.md"},
 	model.AgentCursor:     {"jd-fix-agent.md", "jd-judge-a.md", "jd-judge-b.md"},
 	model.AgentKimi:       {"gentleman.yaml"},
+	// CodeBuddy receives Judgment Day (not RDD): its review-* lenses would
+	// require the receipt-driven review transport it does not advertise yet.
+	model.AgentCodeBuddy: {"jd-fix-agent.md", "jd-judge-a.md", "jd-judge-b.md"},
 }
 
 // RetiredNativeAgentManifest lists the review agents earlier releases installed

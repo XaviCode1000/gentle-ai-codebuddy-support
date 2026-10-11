@@ -72,6 +72,7 @@ func UserSkillDirs(home string) []string {
 		filepath.Join(home, ".config", "opencode", "skills"),
 		filepath.Join(home, ".config", "kilo", "skills"),
 		filepath.Join(home, ".claude", "skills"),
+		filepath.Join(home, ".codebuddy", "skills"),
 		filepath.Join(home, ".gemini", "skills"),
 		filepath.Join(home, ".gemini", "antigravity", "skills"),
 		filepath.Join(home, ".gemini", "antigravity-desktop", "skills"),
@@ -96,6 +97,7 @@ func ProjectSkillDirs(cwd string) []string {
 		// Agent-native workspace skill locations.
 		filepath.Join(cwd, ".opencode", "skills"),
 		filepath.Join(cwd, ".claude", "skills"),
+		filepath.Join(cwd, ".codebuddy", "skills"),
 		filepath.Join(cwd, ".gemini", "skills"),
 		filepath.Join(cwd, ".cursor", "skills"),
 		filepath.Join(cwd, ".github", "skills"),

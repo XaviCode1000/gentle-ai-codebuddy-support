@@ -26,6 +26,17 @@ func claudeSkillRegistryCommand(platform string) string {
 	return claudeLegacySkillRegistryCommand
 }
 
+// codebuddySkillRegistryCommand mirrors the Claude hook, resolving the project
+// directory from CodeBuddy's own CODEBUDDY_PROJECT_DIR hook variable.
+const codebuddySkillRegistryCommand = `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true`
+
+func codebuddySkillRegistryCommandFor(platform string) string {
+	if platform == "windows" {
+		return `powershell -NoProfile -Command 'if (Test-Path env:CODEBUDDY_PROJECT_DIR) { $dir = $env:CODEBUDDY_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`
+	}
+	return codebuddySkillRegistryCommand
+}
+
 // pruneClaudeLegacySkillRegistryHooks removes only the retired POSIX command
 // under UserPromptSubmit, preserving unrelated hooks and their outer entries.
 func pruneClaudeLegacySkillRegistryHooks(entries []any) ([]any, bool) {
@@ -84,6 +95,10 @@ func installSkillRegistry(homeDir string, adapter agents.Adapter, platform strin
 		path = adapter.SettingsPath(homeDir)
 		event = "UserPromptSubmit"
 		command = claudeSkillRegistryCommand(platform)
+	case model.AgentCodeBuddy:
+		path = adapter.SettingsPath(homeDir)
+		event = "UserPromptSubmit"
+		command = codebuddySkillRegistryCommandFor(platform)
 	default:
 		return Result{}, nil
 	}

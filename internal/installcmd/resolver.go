@@ -55,6 +55,8 @@ func (profileResolver) ResolveAgentInstall(profile system.PlatformProfile, agent
 		return resolveKilocodeInstall(profile), nil
 	case model.AgentKimi:
 		return resolveKimiInstall(profile)
+	case model.AgentCodeBuddy:
+		return resolveCodeBuddyInstall(profile), nil
 	default:
 		return nil, fmt.Errorf("install command is not supported for agent %q", agent)
 	}
@@ -84,8 +86,19 @@ func resolveClaudeCodeInstall(profile system.PlatformProfile) CommandSequence {
 // shows for Kilocode — display text only, never executed by gentle-ai. On
 // Linux with system npm, sudo is required. With nvm/fnm/volta, it is not.
 // On Windows and macOS, sudo is never needed.
-func resolveKilocodeInstall(profile system.PlatformProfile) CommandSequence {
-	const pkg = "@kilocode/cli@latest"
+func resolveKilocodeInstall(profile system.PlatformProfile) CommandSequence {	const pkg = "@kilocode/cli@latest"
+	if profile.OS == "linux" && !profile.NpmWritable {
+		return CommandSequence{{"sudo", "npm", "install", "-g", "--ignore-scripts", pkg}}
+	}
+	return CommandSequence{{"npm", "install", "-g", "--ignore-scripts", pkg}}
+}
+
+// resolveCodeBuddyInstall returns the npm install command sequence gentle-ai
+// shows for CodeBuddy — display text only, never executed by gentle-ai. On
+// Linux with system npm, sudo is required. With nvm/fnm/volta, it is not.
+// On Windows and macOS, sudo is never needed.
+func resolveCodeBuddyInstall(profile system.PlatformProfile) CommandSequence {
+	const pkg = "@tencent-ai/codebuddy-code@latest"
 	if profile.OS == "linux" && !profile.NpmWritable {
 		return CommandSequence{{"sudo", "npm", "install", "-g", "--ignore-scripts", pkg}}
 	}
@@ -121,6 +134,7 @@ var npmBasedAgents = map[model.AgentID]struct{}{
 	model.AgentCodex:      {},
 	model.AgentQwenCode:   {},
 	model.AgentPi:         {},
+	model.AgentCodeBuddy:  {},
 }
 
 // ValidateAgentInstallPreflight validates agent-specific prerequisites that must
