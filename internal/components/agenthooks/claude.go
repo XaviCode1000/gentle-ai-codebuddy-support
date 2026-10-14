@@ -9,10 +9,18 @@ import (
 	"github.com/gentleman-programming/gentle-ai/v4/internal/model"
 )
 
-// InstallRetainedClaudeHooks installs review and telemetry hooks independently of SDD.
+// InstallRetainedClaudeHooks installs review and telemetry hooks independently
+// of SDD. It serves Claude Code and CodeBuddy Code: both read the same hooks
+// shape from settings.json, with one schema difference — CodeBuddy's async
+// hooks take an `asyncTimeout` key where Claude takes `timeout`.
 func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result, error) {
-	if adapter.Agent() != model.AgentClaudeCode {
+	agent := adapter.Agent()
+	if agent != model.AgentClaudeCode && agent != model.AgentCodeBuddy {
 		return Result{}, nil
+	}
+	asyncTimeoutKey := "timeout"
+	if agent == model.AgentCodeBuddy {
+		asyncTimeoutKey = "asyncTimeout"
 	}
 	path := adapter.SettingsPath(homeDir)
 	if path == "" {
@@ -43,6 +51,10 @@ func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result,
 	if !ok {
 		hooks = map[string]any{}
 	}
+	telemetryRuntime := "claude"
+	if agent == model.AgentCodeBuddy {
+		telemetryRuntime = "codebuddy"
+	}
 	command := fmt.Sprintf("gentle-ai review stop-hook --agent %s", adapter.Agent())
 	entries := []struct {
 		key, matcher, command string
@@ -51,8 +63,8 @@ func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result,
 	}{
 		{"Stop", "", command, 60, false},
 		{"SessionStart", "startup|resume|clear|compact", command, 30, false},
-		{"SubagentStop", "", "gentle-ai telemetry runtime claude --json", 5, true},
-		{"Stop", "", "gentle-ai telemetry runtime claude --json", 5, true},
+		{"SubagentStop", "", "gentle-ai telemetry runtime " + telemetryRuntime + " --json", 5, true},
+		{"Stop", "", "gentle-ai telemetry runtime " + telemetryRuntime + " --json", 5, true},
 	}
 	changed := false
 	for _, e := range entries {
@@ -67,6 +79,9 @@ func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result,
 		hook := map[string]any{"type": "command", "command": e.command, "timeout": e.timeout}
 		if e.async {
 			hook["async"] = true
+			// CodeBuddy's async protocol names the bound `asyncTimeout`; the
+			// generic `timeout` above is retained for Claude's schema.
+			hook[asyncTimeoutKey] = e.timeout
 		}
 		hooks[e.key] = append(list, map[string]any{"matcher": e.matcher, "hooks": []any{hook}})
 		changed = true
