@@ -11,6 +11,7 @@ package model
 // the transport, but its prompt and agents are owned by Gentle Shell.
 var receiptDrivenDevelopmentAgents = []AgentID{
 	AgentClaudeCode,
+	AgentCodeBuddy,
 	AgentCodex,
 	AgentOpenCode,
 	AgentPi,

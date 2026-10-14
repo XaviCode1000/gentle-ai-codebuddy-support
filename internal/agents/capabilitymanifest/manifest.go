@@ -165,6 +165,7 @@ var reviewTransportExposureByAgent = func() map[model.AgentID]ContractExposure {
 		exposure[agent] = ContractExposureDormant
 	}
 	exposure[model.AgentClaudeCode] = ContractExposureAdvertised
+	exposure[model.AgentCodeBuddy] = ContractExposureAdvertised
 	exposure[model.AgentOpenCode] = ContractExposureAdvertised
 	exposure[model.AgentCodex] = ContractExposureAdvertised
 	exposure[model.AgentPi] = ContractExposureAdvertised
@@ -193,6 +194,7 @@ var immutableReviewExecutorExposureByAgent = func() map[model.AgentID]ContractEx
 		exposure[agent] = ContractExposureDormant
 	}
 	exposure[model.AgentClaudeCode] = ContractExposureAdvertised
+	exposure[model.AgentCodeBuddy] = ContractExposureAdvertised
 	exposure[model.AgentOpenCode] = ContractExposureAdvertised
 	exposure[model.AgentCodex] = ContractExposureAdvertised
 	exposure[model.AgentPi] = ContractExposureAdvertised

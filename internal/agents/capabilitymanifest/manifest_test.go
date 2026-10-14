@@ -226,6 +226,7 @@ func TestEveryManifestKeepsWorkRoutingDormantAndHashesCanonically(t *testing.T) 
 		model.AgentTrae:          "sha256:6ee937b8a1a35f51dcb8db6d90b9f05a52b651cedff9d323dede48d9c4a3fde8",
 		model.AgentVSCodeCopilot: "sha256:cc800f1eca6d5ea36ae83ae4fd43b59223093196970bdfee59096c60fe22fffe",
 		model.AgentWindsurf:      "sha256:2ccb52ebf0926b16f39f59e3df4bbf392c7bdd7fcc76dfb38ee758574be3ad00",
+		model.AgentCodeBuddy:     "sha256:f63db6b9ea92f1115c2ba6f0e80d84382bcd7e57d0039081f08fe523e365e190",
 	}
 
 	for agent, wantDigest := range wantManifestDigests {
@@ -244,7 +245,7 @@ func TestEveryManifestKeepsWorkRoutingDormantAndHashesCanonically(t *testing.T) 
 			if manifest.Advertises(ContractWorkRoutingV1) {
 				t.Fatal("work-routing must remain unadvertised before final activation")
 			}
-			wantImmutableExecutor := agent == model.AgentClaudeCode || agent == model.AgentOpenCode || agent == model.AgentCodex || agent == model.AgentPi
+			wantImmutableExecutor := agent == model.AgentClaudeCode || agent == model.AgentCodeBuddy || agent == model.AgentOpenCode || agent == model.AgentCodex || agent == model.AgentPi
 			if got := manifest.Advertises(ContractImmutableReviewExecutorV1); got != wantImmutableExecutor {
 				t.Fatalf("immutable reviewer execution advertised = %t, want %t", got, wantImmutableExecutor)
 			}
@@ -319,6 +320,7 @@ func TestEveryManifestDigestStaysByteStable(t *testing.T) {
 		model.AgentTrae:          "sha256:6ee937b8a1a35f51dcb8db6d90b9f05a52b651cedff9d323dede48d9c4a3fde8",
 		model.AgentVSCodeCopilot: "sha256:cc800f1eca6d5ea36ae83ae4fd43b59223093196970bdfee59096c60fe22fffe",
 		model.AgentWindsurf:      "sha256:2ccb52ebf0926b16f39f59e3df4bbf392c7bdd7fcc76dfb38ee758574be3ad00",
+		model.AgentCodeBuddy:     "sha256:f63db6b9ea92f1115c2ba6f0e80d84382bcd7e57d0039081f08fe523e365e190",
 	}
 
 	nonPiAgents := make([]model.AgentID, 0, len(wantNonPiDigests))
@@ -326,7 +328,7 @@ func TestEveryManifestDigestStaysByteStable(t *testing.T) {
 		nonPiAgents = append(nonPiAgents, agent)
 	}
 
-	if got := len(nonPiAgents); got != 16 {
+	if got := len(nonPiAgents); got != 17 {
 		t.Fatalf("want 16 non-Pi agents, got %d", got)
 	}
 
@@ -349,13 +351,14 @@ func TestEveryManifestDigestStaysByteStable(t *testing.T) {
 }
 
 func TestReviewTransportAdvertisementIsClosedCatalogSet(t *testing.T) {
-	const wantExposed = 4
+	const wantExposed = 5
 
 	exposed := 0
 	for _, agent := range catalog.AllAgents() {
 		t.Run(string(agent.ID), func(t *testing.T) {
 			manifest := MustForAgent(agent.ID)
 			want := agent.ID == model.AgentClaudeCode ||
+				agent.ID == model.AgentCodeBuddy ||
 				agent.ID == model.AgentOpenCode ||
 				agent.ID == model.AgentCodex ||
 				agent.ID == model.AgentPi

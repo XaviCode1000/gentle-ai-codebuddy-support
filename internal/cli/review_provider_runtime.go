@@ -27,7 +27,7 @@ func reviewProviderAdapter(role string, agent model.AgentID, lens ...string) (re
 	if err != nil {
 		return nil, err
 	}
-	if agent != model.AgentClaudeCode && agent != model.AgentCodex {
+	if agent != model.AgentClaudeCode && agent != model.AgentCodeBuddy && agent != model.AgentCodex {
 		return adapter, nil
 	}
 	key := ""
@@ -50,6 +50,11 @@ func reviewProviderAdapter(role string, agent model.AgentID, lens ...string) (re
 		assignment := savedClaudeReviewAssignment(key)
 		claude.Model = assignment.Model
 		claude.Effort = assignment.Effort
+	}
+	if codebuddy, ok := adapter.(*reviewerprovider.CodeBuddyAdapter); ok {
+		assignment := savedClaudeReviewAssignment(key)
+		codebuddy.Model = assignment.Model
+		codebuddy.Effort = assignment.Effort
 	}
 	if codex, ok := adapter.(*reviewerprovider.CodexAdapter); ok {
 		codex.Model = savedCodexReviewModel(key)
@@ -116,6 +121,8 @@ var reviewProviderAdapterFor = func(contract reviewerprovider.Contract, agent mo
 	switch agent {
 	case model.AgentClaudeCode:
 		return reviewerprovider.NewClaudeAdapter(), nil
+	case model.AgentCodeBuddy:
+		return reviewerprovider.NewCodeBuddyAdapter(), nil
 	case model.AgentCodex:
 		return reviewerprovider.NewCodexAdapter(), nil
 	case model.AgentOpenCode:

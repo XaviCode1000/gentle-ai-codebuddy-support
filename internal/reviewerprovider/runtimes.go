@@ -10,6 +10,7 @@ import "github.com/gentleman-programming/gentle-ai/v4/internal/model"
 // prose never expands it.
 var registeredRuntimeIdentities = []string{
 	"claude-code",
+	"codebuddy",
 	"codex",
 	"opencode",
 	"pi",
