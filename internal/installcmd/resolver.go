@@ -86,7 +86,8 @@ func resolveClaudeCodeInstall(profile system.PlatformProfile) CommandSequence {
 // shows for Kilocode — display text only, never executed by gentle-ai. On
 // Linux with system npm, sudo is required. With nvm/fnm/volta, it is not.
 // On Windows and macOS, sudo is never needed.
-func resolveKilocodeInstall(profile system.PlatformProfile) CommandSequence {	const pkg = "@kilocode/cli@latest"
+func resolveKilocodeInstall(profile system.PlatformProfile) CommandSequence {
+	const pkg = "@kilocode/cli@latest"
 	if profile.OS == "linux" && !profile.NpmWritable {
 		return CommandSequence{{"sudo", "npm", "install", "-g", "--ignore-scripts", pkg}}
 	}
