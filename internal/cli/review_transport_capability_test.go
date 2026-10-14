@@ -56,12 +56,13 @@ func TestImmutableReviewRuntimeMatrix(t *testing.T) {
 func TestImmutableReviewRuntimeCapabilityIsClosedCatalogSet(t *testing.T) {
 	t.Setenv(reviewPiHostRelayContractEnvironment, reviewPiHostRelayContract)
 
-	const wantExposed = 4
+	const wantExposed = 5
 	exposed := 0
 	for _, agent := range catalog.AllAgents() {
 		t.Run(string(agent.ID), func(t *testing.T) {
 			capability := reviewImmutableRuntimeCapability(agent.ID)
 			want := agent.ID == model.AgentClaudeCode ||
+				agent.ID == model.AgentCodeBuddy ||
 				agent.ID == model.AgentOpenCode ||
 				agent.ID == model.AgentCodex ||
 				agent.ID == model.AgentPi
