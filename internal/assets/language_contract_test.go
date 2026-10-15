@@ -76,8 +76,8 @@ func TestManagedDirectReplyAssetsEnforceEnglishNoCodeSwitching(t *testing.T) {
 
 func TestODDOrchestratorAssetsEnforceLanguageContract(t *testing.T) {
 	assetPaths := allSDDOrchestratorAssetPaths(t)
-	if len(assetPaths) != 12 {
-		t.Fatalf("ODD orchestrator asset count = %d, want 12", len(assetPaths))
+	if len(assetPaths) != 13 {
+		t.Fatalf("ODD orchestrator asset count = %d, want 13", len(assetPaths))
 	}
 
 	for _, path := range assetPaths {

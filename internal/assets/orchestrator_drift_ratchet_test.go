@@ -9,16 +9,18 @@ import (
 	"testing"
 )
 
-// #3817: ODD orchestrators are hand-maintained across twelve runtimes. Keep
+// #3817: ODD orchestrators are hand-maintained across runtimes. Keep
 // historical ceilings for retained shared sections. The lossless-prompt
 // section's ceiling rises from four to six for the intentional ODD rewrite;
 // its common safety anchors remain checked on every runtime below. Removing
 // a section is an inventory change; new uncoordinated drift must fail.
+// "Delegation Rules" rises from eleven to twelve for the intentional CodeBuddy
+// runtime, whose only difference is naming its own native delegation tool.
 var orchestratorSectionDriftRatchet = []struct {
 	name        string
 	maxVariants int
 }{
-	{"Delegation Rules", 11},
+	{"Delegation Rules", 12},
 	{"State and Conventions", 10},
 	{"Skill Resolution Feedback", 8},
 	{"Agent Teams Orchestrator", 6},
@@ -67,13 +69,13 @@ func orchestratorSectionVariants(t *testing.T) map[string]map[string]struct{} {
 	if err != nil {
 		t.Fatalf("walk orchestrator assets: %v", err)
 	}
-	for _, runtime := range []string{"antigravity", "claude", "codex", "cursor", "gemini", "generic", "hermes", "kimi", "kiro", "opencode", "qwen", "windsurf"} {
+	for _, runtime := range []string{"antigravity", "claude", "codebuddy", "codex", "cursor", "gemini", "generic", "hermes", "kimi", "kiro", "opencode", "qwen", "windsurf"} {
 		if !seen[runtime] {
 			t.Errorf("missing ODD orchestrator for %s", runtime)
 		}
 	}
-	if len(seen) != 12 {
-		t.Errorf("ODD orchestrator inventory changed: got %d runtimes, want 12; update the ratchet deliberately", len(seen))
+	if len(seen) != 13 {
+		t.Errorf("ODD orchestrator inventory changed: got %d runtimes, want 13; update the ratchet deliberately", len(seen))
 	}
 	return variants
 }
