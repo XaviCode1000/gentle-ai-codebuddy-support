@@ -89,9 +89,12 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 	for _, tc := range []struct {
 		agent         model.AgentID
 		file, command string
+		event         string
+		windowsCmd    string
 	}{
-		{model.AgentCodex, "hooks.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true`},
-		{model.AgentClaudeCode, "settings.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true`},
+		{model.AgentCodex, "hooks.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true`, "SessionStart", ""},
+		{model.AgentClaudeCode, "settings.json", `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true'`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CLAUDE_PROJECT_DIR) { $dir = $env:CLAUDE_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
+		{model.AgentCodeBuddy, "settings.json", `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CODEBUDDY_PROJECT_DIR) { $dir = $env:CODEBUDDY_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
 	} {
 		t.Run(string(tc.agent), func(t *testing.T) {
 			home := t.TempDir()
@@ -115,13 +118,10 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := tc.command
-			if tc.agent == model.AgentClaudeCode && runtime.GOOS == "windows" {
-				command = `powershell -NoProfile -Command 'if (Test-Path env:CLAUDE_PROJECT_DIR) { $dir = $env:CLAUDE_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`
+			if runtime.GOOS == "windows" && tc.windowsCmd != "" {
+				command = tc.windowsCmd
 			}
-			event := "SessionStart"
-			if tc.agent == model.AgentClaudeCode {
-				event = "UserPromptSubmit"
-			}
+			event := tc.event
 			entries, ok := document["hooks"].(map[string]any)[event].([]any)
 			if !ok || len(entries) != 1 || filepath.Base(result.Files[0]) != tc.file {
 				t.Fatalf("unexpected hook shape: %s", content)
@@ -142,7 +142,7 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 					t.Fatalf("Codex startup sources missing: %s", content)
 				}
 			}
-			for _, malformed := range []string{`{"hooks":[]}`, `{"hooks":{"` + map[model.AgentID]string{model.AgentCodex: "SessionStart", model.AgentClaudeCode: "UserPromptSubmit"}[tc.agent] + `":{}}}`, `{"permissions":`} {
+			for _, malformed := range []string{`{"hooks":[]}`, `{"hooks":{"` + tc.event + `":{}}}`, `{"permissions":`} {
 				if err := os.WriteFile(result.Files[0], []byte(malformed), 0o644); err != nil {
 					t.Fatal(err)
 				}

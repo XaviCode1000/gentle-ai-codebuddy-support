@@ -1001,7 +1001,7 @@ func workspaceRoutingGuidanceGlobalOnly(agent model.AgentID) bool {
 		return true
 	}
 	switch agent {
-	case model.AgentPi, model.AgentClaudeCode, model.AgentCodex:
+	case model.AgentPi, model.AgentClaudeCode, model.AgentCodeBuddy, model.AgentCodex:
 		return true
 	}
 	return false

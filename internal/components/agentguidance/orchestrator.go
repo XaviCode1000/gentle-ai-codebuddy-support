@@ -122,6 +122,8 @@ func orchestratorAsset(agent model.AgentID) string {
 	switch agent {
 	case model.AgentClaudeCode:
 		return "claude/orchestrator.md"
+	case model.AgentCodeBuddy:
+		return "codebuddy/orchestrator.md"
 	case model.AgentGeminiCLI:
 		return "gemini/orchestrator.md"
 	case model.AgentCodex:

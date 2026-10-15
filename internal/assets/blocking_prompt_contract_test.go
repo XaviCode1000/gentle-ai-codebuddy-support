@@ -48,6 +48,7 @@ const providerDefectHandoffCanonicalPath = "generic/orchestrator.md"
 var blockingPromptRoutes = map[string]blockingPromptRoute{
 	"antigravity/orchestrator.md": {},
 	"claude/orchestrator.md":      {nativeTool: "`AskUserQuestion`"},
+	"codebuddy/orchestrator.md":   {nativeTool: "`AskUserQuestion`"},
 	"codex/orchestrator.md":       {},
 	"cursor/orchestrator.md":      {},
 	"gemini/orchestrator.md":      {},

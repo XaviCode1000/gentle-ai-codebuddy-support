@@ -58,5 +58,7 @@ var releasedPluginDigests = map[string][]string{
 		"12dcf0eb388ebbb000d8ac318b906a3ab3f7880049fcc0ceed2012143271c4cd", // plugins/ v2.5.0-rc.1 to v3.6.0
 		"c2b4382c014c2c15d4b18c70df8d65c272e557d2639e2b2f1ad8d9236142dc48", // plugins-v2/ v3.3.0 to v4.0.0
 		"eaae11a2e1bcbdfaeeb030a40de46e15a8c098bfef3018226fc8e05327e86cdf", // plugins/ v3.6.1 to v4.0.0
+		"0c7205004cc68e60dbb31943244817268d7766ab74cd20d691e2d17f9ccb0714", // plugins/ unreleased
+		"3dafbb0e5efcfc44dcf2881625d681e74d76cd03b0768a2b268fbcd901abae2e", // plugins-v2/ unreleased
 	},
 }

@@ -157,6 +157,11 @@ func reviewImmutableRuntimeCapabilityChecking(agent model.AgentID, openCodeRunti
 	switch agent {
 	case model.AgentClaudeCode:
 		policy.Eligible = true
+	case model.AgentCodeBuddy:
+		// CodeBuddy rebuilds Claude's fresh-reviewer boundary: a generated
+		// prompt-carried reviewer with no live tools, launched as an isolated
+		// print-mode process (see reviewerprovider.CodeBuddyAdapter).
+		policy.Eligible = true
 	case model.AgentCodex:
 		policy.Eligible = true
 	case model.AgentOpenCode:
@@ -182,7 +187,7 @@ func reviewImmutableRuntimeCapabilityChecking(agent model.AgentID, openCodeRunti
 		return policy
 	}
 	switch agent {
-	case model.AgentClaudeCode:
+	case model.AgentClaudeCode, model.AgentCodeBuddy:
 		policy.Transport = reviewImmutableTransportClaudePromptCarried
 	case model.AgentOpenCode:
 		policy.Transport = reviewImmutableTransportOpenCodeProviderInjected

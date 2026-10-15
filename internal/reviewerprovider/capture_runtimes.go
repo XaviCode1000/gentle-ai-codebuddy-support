@@ -49,7 +49,7 @@ func RuntimeContextBudget(agent model.AgentID) int {
 // disagrees with itself.
 func CapturesInProcess(agent model.AgentID) bool {
 	switch agent {
-	case model.AgentClaudeCode, model.AgentCodex:
+	case model.AgentClaudeCode, model.AgentCodeBuddy, model.AgentCodex:
 		return true
 	default:
 		return false

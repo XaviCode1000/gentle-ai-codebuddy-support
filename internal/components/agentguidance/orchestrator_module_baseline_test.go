@@ -75,6 +75,7 @@ var moduleVariantInputs = []moduleVariantInput{
 	{id: "openclaw/small", agent: model.AgentOpenClaw, capability: "small", asset: "generic/orchestrator.md"},
 	{id: "trae-ide/capable", agent: model.AgentTrae, asset: "generic/orchestrator.md"},
 	{id: "trae-ide/small", agent: model.AgentTrae, capability: "small", asset: "generic/orchestrator.md"},
+	{id: "codebuddy", agent: model.AgentCodeBuddy, asset: "codebuddy/orchestrator.md"},
 }
 
 type moduleVariant struct {

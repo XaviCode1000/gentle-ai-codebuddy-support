@@ -165,6 +165,7 @@ var reviewTransportExposureByAgent = func() map[model.AgentID]ContractExposure {
 		exposure[agent] = ContractExposureDormant
 	}
 	exposure[model.AgentClaudeCode] = ContractExposureAdvertised
+	exposure[model.AgentCodeBuddy] = ContractExposureAdvertised
 	exposure[model.AgentOpenCode] = ContractExposureAdvertised
 	exposure[model.AgentCodex] = ContractExposureAdvertised
 	exposure[model.AgentPi] = ContractExposureAdvertised
@@ -193,6 +194,7 @@ var immutableReviewExecutorExposureByAgent = func() map[model.AgentID]ContractEx
 		exposure[agent] = ContractExposureDormant
 	}
 	exposure[model.AgentClaudeCode] = ContractExposureAdvertised
+	exposure[model.AgentCodeBuddy] = ContractExposureAdvertised
 	exposure[model.AgentOpenCode] = ContractExposureAdvertised
 	exposure[model.AgentCodex] = ContractExposureAdvertised
 	exposure[model.AgentPi] = ContractExposureAdvertised
@@ -316,6 +318,10 @@ var featureClaimsByAgent = map[model.AgentID]AgentFeatureClaims{
 	// it: no skills, MCP, system prompt, or other managed file writes.
 	model.AgentConductor: {},
 	model.AgentClaudeCode: {
+		OutputStyles: true, SlashCommands: true,
+		FileSubAgents: true, Skills: true, SystemPrompt: true, MCP: true,
+	},
+	model.AgentCodeBuddy: {
 		OutputStyles: true, SlashCommands: true,
 		FileSubAgents: true, Skills: true, SystemPrompt: true, MCP: true,
 	},

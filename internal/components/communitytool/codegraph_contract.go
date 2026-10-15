@@ -54,6 +54,9 @@ var codeGraphCompatibilityTable = map[model.AgentID]codeGraphCompatibility{
 	// it stays in the table so a future capability claim cannot silently
 	// bypass the exhaustive compatibility contract.
 	model.AgentConductor: excludedCompatibility(model.AgentConductor),
+	// CodeBuddy supports MCP via ~/.codebuddy/.mcp.json, but CodeGraph has no
+	// CodeBuddy-specific target yet, so it stays excluded until one exists.
+	model.AgentCodeBuddy: excludedCompatibility(model.AgentCodeBuddy),
 }
 
 func nativeCompatibility(id model.AgentID, target string) codeGraphCompatibility {
