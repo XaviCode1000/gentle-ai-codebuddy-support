@@ -16,6 +16,22 @@ import (
 // SendClaude handles one Claude Code hook in memory and sends at most once.
 // Source paths and file contents never enter the aggregate or an error message.
 func SendClaude(ctx context.Context, home string, getenv func(string) string, input io.Reader, client *http.Client) string {
+	return sendClaudeShape(ctx, home, getenv, input, client, "claude-code")
+}
+
+// SendCodeBuddy handles one CodeBuddy hook. CodeBuddy clones Claude Code's hook
+// schema (the same SessionStart/Stop/SubagentStop payload and transcript
+// layout), so it reuses the exact parse-and-normalize path under its own host
+// label; only the emitted host differs.
+func SendCodeBuddy(ctx context.Context, home string, getenv func(string) string, input io.Reader, client *http.Client) string {
+	return sendClaudeShape(ctx, home, getenv, input, client, "codebuddy")
+}
+
+// sendClaudeShape is the shared Claude-shaped hook handler: it parses one
+// Claude-compatible hook payload, reads its bounded transcript tail and agent
+// definition, normalizes the observation, and sends at most one batch under
+// host.
+func sendClaudeShape(ctx context.Context, home string, getenv func(string) string, input io.Reader, client *http.Client, host string) string {
 	if !allowed(home, getenv) {
 		return "disabled"
 	}
@@ -53,7 +69,7 @@ func SendClaude(ctx context.Context, home string, getenv func(string) string, in
 	if observation == nil {
 		return "ignored"
 	}
-	batch, err := json.Marshal(telemetry.RuntimeBatch{Schema: telemetry.RuntimeSchema, Registry: json.RawMessage("1"), Host: "claude-code", Rows: []telemetry.RuntimeRow{observation.Row}})
+	batch, err := json.Marshal(telemetry.RuntimeBatch{Schema: telemetry.RuntimeSchema, Registry: json.RawMessage("1"), Host: host, Rows: []telemetry.RuntimeRow{observation.Row}})
 	if err != nil || len(batch) > telemetry.RuntimeMaxBytes {
 		return "discarded"
 	}

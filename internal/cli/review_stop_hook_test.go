@@ -371,6 +371,28 @@ func TestReviewStopHookRequiresSupportedAgent(t *testing.T) {
 	}
 }
 
+// TestReviewStopHookAcceptsWiredRuntimes pins the admitted --agent set to the
+// runtimes whose compiled transport captures the reviewer in process, which is
+// what the reminder routes the agent into. Claude Code and CodeBuddy both
+// install this hook, so both must be accepted; --agent is never a place where
+// a wired runtime gets a preflight refusal.
+func TestReviewStopHookAcceptsWiredRuntimes(t *testing.T) {
+	reviewModeHome(t)
+	repo := initReviewCLIRepo(t)
+	stageReviewStopHookCandidate(t, repo)
+	enableReviewStopHookRDD(t, repo)
+
+	for _, agent := range []string{"claude-code", "codebuddy"} {
+		t.Run(agent, func(t *testing.T) {
+			stdin := strings.NewReader(reviewStopHookTestPayload(t, "sess-wired", repo, false, nil))
+			var stdout, stderr bytes.Buffer
+			if err := runReviewStopHook([]string{"--agent", agent}, stdin, &stdout, &stderr); err != nil {
+				t.Fatalf("wired runtime %q refused: %v (stderr=%s)", agent, err, stderr.String())
+			}
+		})
+	}
+}
+
 func TestReviewStopHookSessionStartWritesBaselineSilently(t *testing.T) {
 	home := reviewModeHome(t)
 	repo := initReviewCLIRepo(t)

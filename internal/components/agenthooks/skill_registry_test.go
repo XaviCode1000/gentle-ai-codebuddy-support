@@ -93,8 +93,8 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 		windowsCmd    string
 	}{
 		{model.AgentCodex, "hooks.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true`, "SessionStart", ""},
-		{model.AgentClaudeCode, "settings.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CLAUDE_PROJECT_DIR) { $dir = $env:CLAUDE_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
-		{model.AgentCodeBuddy, "settings.json", `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CODEBUDDY_PROJECT_DIR) { $dir = $env:CODEBUDDY_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
+		{model.AgentClaudeCode, "settings.json", `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true'`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CLAUDE_PROJECT_DIR) { $dir = $env:CLAUDE_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
+		{model.AgentCodeBuddy, "settings.json", `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`, "UserPromptSubmit", `powershell -NoProfile -Command 'if (Test-Path env:CODEBUDDY_PROJECT_DIR) { $dir = $env:CODEBUDDY_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`},
 	} {
 		t.Run(string(tc.agent), func(t *testing.T) {
 			home := t.TempDir()

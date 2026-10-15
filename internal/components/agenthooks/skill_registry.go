@@ -17,29 +17,57 @@ type Result struct {
 	Files   []string
 }
 
-const claudeLegacySkillRegistryCommand = `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true`
+// posixSkillRegistryCommand wraps a POSIX body in `sh -c` so it runs under a
+// guaranteed POSIX shell. Claude Code and CodeBuddy execute hook commands with
+// the user's login shell, so a fish/zsh/csh user would otherwise hit a
+// "parameter expansion not supported" error on `"${VAR:-$PWD}"`. The single
+// quotes keep the body opaque to whatever shell the host uses to launch `sh`.
+func posixSkillRegistryCommand(projectDirVar string) string {
+	return `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${` + projectDirVar + `:-$PWD}" || true'`
+}
 
 func claudeSkillRegistryCommand(platform string) string {
 	if platform == "windows" {
 		return `powershell -NoProfile -Command 'if (Test-Path env:CLAUDE_PROJECT_DIR) { $dir = $env:CLAUDE_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`
 	}
-	return claudeLegacySkillRegistryCommand
+	return posixSkillRegistryCommand("CLAUDE_PROJECT_DIR")
 }
 
 // codebuddySkillRegistryCommand mirrors the Claude hook, resolving the project
 // directory from CodeBuddy's own CODEBUDDY_PROJECT_DIR hook variable.
-const codebuddySkillRegistryCommand = `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true`
-
-func codebuddySkillRegistryCommandFor(platform string) string {
+func codebuddySkillRegistryCommand(platform string) string {
 	if platform == "windows" {
 		return `powershell -NoProfile -Command 'if (Test-Path env:CODEBUDDY_PROJECT_DIR) { $dir = $env:CODEBUDDY_PROJECT_DIR } else { $dir = $PWD }; gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$dir"; exit 0'`
 	}
-	return codebuddySkillRegistryCommand
+	return posixSkillRegistryCommand("CODEBUDDY_PROJECT_DIR")
 }
 
-// pruneClaudeLegacySkillRegistryHooks removes only the retired POSIX command
-// under UserPromptSubmit, preserving unrelated hooks and their outer entries.
-func pruneClaudeLegacySkillRegistryHooks(entries []any) ([]any, bool) {
+// claudeRetiredSkillRegistryCommands are the exact retired POSIX forms that a
+// prior version installed for Claude. The bare `${VAR:-$PWD}` expansion fails
+// under a non-POSIX login shell (fish/zsh/csh), so the current install wraps
+// the body in `sh -c` (posixSkillRegistryCommand). These literals are kept
+// verbatim so an upgrade recognizes and retires the exact old hook.
+var claudeRetiredSkillRegistryCommands = []string{
+	`gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true`,
+}
+
+// codebuddyRetiredSkillRegistryCommands are the exact retired POSIX forms a
+// prior version installed for CodeBuddy.
+var codebuddyRetiredSkillRegistryCommands = []string{
+	`gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true`,
+}
+
+// pruneSkillRegistryHooks removes the given retired commands from
+// UserPromptSubmit entries, preserving unrelated hooks and their outer entries.
+func pruneSkillRegistryHooks(entries []any, retired []string) ([]any, bool) {
+	matchesRetired := func(cmd string) bool {
+		for _, r := range retired {
+			if cmd == r {
+				return true
+			}
+		}
+		return false
+	}
 	var keptEntries []any
 	changed := false
 	for _, entry := range entries {
@@ -56,7 +84,7 @@ func pruneClaudeLegacySkillRegistryHooks(entries []any) ([]any, bool) {
 		var keptHooks []any
 		for _, hook := range hooks {
 			h, ok := hook.(map[string]any)
-			if ok && h["command"] == claudeLegacySkillRegistryCommand {
+			if ok && matchesRetired(fmt.Sprint(h["command"])) {
 				changed = true
 				continue
 			}
@@ -98,7 +126,7 @@ func installSkillRegistry(homeDir string, adapter agents.Adapter, platform strin
 	case model.AgentCodeBuddy:
 		path = adapter.SettingsPath(homeDir)
 		event = "UserPromptSubmit"
-		command = codebuddySkillRegistryCommandFor(platform)
+		command = codebuddySkillRegistryCommand(platform)
 	default:
 		return Result{}, nil
 	}
@@ -133,9 +161,20 @@ func installSkillRegistry(homeDir string, adapter agents.Adapter, platform strin
 	if _, exists := hooks[event]; exists && !ok {
 		return Result{}, fmt.Errorf("hook settings %q has unsupported hooks.%s shape: want array", path, event)
 	}
+	// Retire any prior bare-POSIX command so an upgrade never leaves the old
+	// (non-POSIX-shell-breaking) hook beside the new `sh -c` one. Applies to
+	// both hosts on every platform: the retired literal is POSIX-only, so it is
+	// stale wherever it appears.
+	var retired []string
+	switch adapter.Agent() {
+	case model.AgentClaudeCode:
+		retired = claudeRetiredSkillRegistryCommands
+	case model.AgentCodeBuddy:
+		retired = codebuddyRetiredSkillRegistryCommands
+	}
 	pruned := false
-	if adapter.Agent() == model.AgentClaudeCode && platform == "windows" {
-		entries, pruned = pruneClaudeLegacySkillRegistryHooks(entries)
+	if len(retired) > 0 {
+		entries, pruned = pruneSkillRegistryHooks(entries, retired)
 		if pruned {
 			if len(entries) == 0 {
 				delete(hooks, event)

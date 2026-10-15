@@ -35,8 +35,8 @@ func TestClaudeSkillRegistryWindowsMigration(t *testing.T) {
 		name, userPromptHooks string
 		wantPromptHooks       int
 	}{
-		{"legacy alone", `[{"matcher":"","hooks":[{"type":"command","command":` + mustJSON(t, claudeLegacySkillRegistryCommand) + `}]}]`, 1},
-		{"legacy alongside canonical", `[{"matcher":"","hooks":[{"type":"command","command":` + mustJSON(t, claudeLegacySkillRegistryCommand) + `},{"type":"command","command":` + mustJSON(t, canonical) + `}]}]`, 1},
+		{"legacy alone", `[{"matcher":"","hooks":[{"type":"command","command":` + mustJSON(t, claudeRetiredSkillRegistryCommands[0]) + `}]}]`, 1},
+		{"legacy alongside canonical", `[{"matcher":"","hooks":[{"type":"command","command":` + mustJSON(t, claudeRetiredSkillRegistryCommands[0]) + `},{"type":"command","command":` + mustJSON(t, canonical) + `}]}]`, 1},
 		{"canonical only in another event", `[{"matcher":"","hooks":[{"type":"command","command":"echo keep"}]}]`, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestClaudeSkillRegistryWindowsMigration(t *testing.T) {
 					commands = append(commands, hook.Command)
 				}
 			}
-			if strings.Count(strings.Join(commands, "\n"), canonical) != 1 || strings.Contains(strings.Join(commands, "\n"), claudeLegacySkillRegistryCommand) {
+			if strings.Count(strings.Join(commands, "\n"), canonical) != 1 || strings.Contains(strings.Join(commands, "\n"), claudeRetiredSkillRegistryCommands[0]) {
 				t.Fatalf("canonical command missing or legacy command retained: %q", commands)
 			}
 			second, err := installSkillRegistry(home, adapter, "windows")

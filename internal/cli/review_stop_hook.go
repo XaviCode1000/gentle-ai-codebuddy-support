@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/filemerge"
+	"github.com/gentleman-programming/gentle-ai/v4/internal/model"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/reviewtransaction"
 )
 
@@ -75,6 +76,18 @@ type reviewStopHookReminderRecord struct {
 	LastSeenTargetIdentity string `json:"last_seen_target_identity,omitempty"`
 }
 
+// reviewStopHookWiredRuntime reports whether agent is a runtime whose compiled
+// immutable transport captures the reviewer in process, which is the same
+// boundary `review status --agent <id>` already dispatches on
+// (reviewProviderAdapterFor). Reading that one predicate instead of a literal
+// keeps this hook's admitted set in lockstep with the transport that the
+// reminder routes the agent into: claude-code, codebuddy and codex qualify
+// today, while a host-relayed runtime (pi, opencode) or an unregistered one
+// does not.
+func reviewStopHookWiredRuntime(agent model.AgentID) bool {
+	return reviewProviderCaptureRuntime(agent)
+}
+
 // RunReviewStopHook is the `gentle-ai review stop-hook` entry point. Claude
 // Code runs it as both a SessionStart and a Stop hook. On SessionStart it
 // records the repository's current unreviewed-candidate identity (if any) as
@@ -96,7 +109,7 @@ func RunReviewStopHook(args []string, stdout io.Writer) error {
 func runReviewStopHook(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	flags := newReviewFlagSet("review stop-hook", stderr,
 		"Read one Claude Code hook payload from stdin (SessionStart or Stop). On SessionStart, record the repository's current unreviewed-candidate identity as this session's baseline, with no output. On Stop, when receipt-driven development is enabled and the repository holds a candidate the session did not start with, print one reminder that routes the agent through the selectorless STATUS preflight before it reports completion. Every other case -- including an unrecognized hook_event_name -- is silent, and this command never runs review start itself.")
-	agent := flags.String("agent", "", "required; generated active runtime identity (only claude-code is accepted today)")
+	agent := flags.String("agent", "", "required; generated active runtime identity (claude-code, codebuddy, codex)")
 	cwdOverride := flags.String("cwd", "", "optional; overrides the hook payload's cwd")
 	if err := parseReviewFlags(flags, args); err != nil {
 		return err
@@ -109,9 +122,9 @@ func runReviewStopHook(args []string, stdin io.Reader, stdout, stderr io.Writer)
 		return reviewPreflightError(fmt.Errorf("unexpected review stop-hook argument %q", flags.Arg(0)))
 	}
 	runtimeAgent := strings.TrimSpace(*agent)
-	if runtimeAgent != "claude-code" {
-		// refusal:by-design operator-knowledge: only the caller can declare which runtime is executing, and only claude-code is wired to this hook today.
-		return reviewPreflightError(fmt.Errorf("review stop-hook requires --agent to be claude-code; got %q", runtimeAgent))
+	if !reviewStopHookWiredRuntime(model.AgentID(runtimeAgent)) {
+		// refusal:by-design operator-knowledge: only the caller can declare which runtime is executing, and only a runtime the compiled transport captures in process is wired to this hook.
+		return reviewPreflightError(fmt.Errorf("review stop-hook requires --agent naming a runtime wired to this hook (claude-code, codebuddy, codex); got %q", runtimeAgent))
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(stdin, maxReviewStopHookPayloadBytes))

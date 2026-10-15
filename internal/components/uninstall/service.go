@@ -1353,10 +1353,14 @@ func rewriteSkillRegistryHook(path string) operation {
 
 // Only exact installed commands are removed; arbitrary user commands remain intact.
 func managedRetainedHookCommand(cmd string) bool {
-	return cmd == `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true` ||
+	return cmd == `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true'` ||
+		cmd == `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'` ||
+		cmd == `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true` ||
 		cmd == `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true` ||
 		cmd == "gentle-ai review stop-hook --agent "+string(model.AgentClaudeCode) ||
+		cmd == "gentle-ai review stop-hook --agent "+string(model.AgentCodeBuddy) ||
 		cmd == "gentle-ai telemetry runtime claude --json" ||
+		cmd == "gentle-ai telemetry runtime codebuddy --json" ||
 		cmd == "gentle-ai telemetry runtime codex --json"
 }
 
