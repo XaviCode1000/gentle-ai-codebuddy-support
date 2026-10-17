@@ -16,6 +16,7 @@ import (
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/antigravity"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/claude"
+	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/codebuddy"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/codex"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/hermes"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents/kilocode"
@@ -99,6 +100,7 @@ func cursorAdapter(t *testing.T) agents.Adapter {
 
 func antigravityAdapter() agents.Adapter { return antigravity.NewAdapter() }
 func claudeAdapter() agents.Adapter      { return claude.NewAdapter() }
+func codebuddyAdapter() agents.Adapter   { return codebuddy.NewAdapter() }
 func hermesAdapter() agents.Adapter      { return hermes.NewAdapter() }
 func kilocodeAdapter() agents.Adapter    { return kilocode.NewAdapter() }
 func kimiAdapter() agents.Adapter        { return kimi.NewAdapter() }
@@ -763,6 +765,56 @@ func TestInjectClaudeWorkspaceWritesMCPJSONAndIsIdempotent(t *testing.T) {
 		if strings.Contains(string(raw), `"mcpServers"`) {
 			t.Fatalf("workspace .claude/settings.json must not carry mcpServers; got %s", raw)
 		}
+	}
+}
+
+// TestInjectCodeBuddyWorkspaceWritesProjectMCPJSON verifies that CodeBuddy
+// workspace scope (home != workspace) writes Context7 into <project-root>/.mcp.json
+// — the file CodeBuddy loads project-scoped MCP servers from — instead of the
+// inert <project>/.codebuddy/.mcp.json, which CodeBuddy never reads.
+func TestInjectCodeBuddyWorkspaceWritesProjectMCPJSON(t *testing.T) {
+	home := t.TempDir()
+	workspace := t.TempDir()
+	mcpPath := filepath.Join(workspace, ".mcp.json")
+
+	first, err := Inject(home, workspace, codebuddyAdapter())
+	if err != nil {
+		t.Fatalf("Inject() first error = %v", err)
+	}
+	if !first.Changed {
+		t.Fatalf("Inject() first changed = false")
+	}
+
+	context7 := readMCPServersContext7Entry(t, mcpPath)
+	if context7["command"] != "npx" {
+		t.Fatalf(".mcp.json mcpServers.context7.command = %#v; want npx", context7["command"])
+	}
+
+	if _, err := os.Stat(filepath.Join(workspace, ".codebuddy", ".mcp.json")); !os.IsNotExist(err) {
+		t.Fatalf("<project>/.codebuddy/.mcp.json must not be written; stat err = %v", err)
+	}
+
+	second, err := Inject(home, workspace, codebuddyAdapter())
+	if err != nil {
+		t.Fatalf("Inject() second error = %v", err)
+	}
+	if second.Changed {
+		t.Fatalf("Inject() second changed = true; want idempotent")
+	}
+}
+
+// TestInjectCodeBuddyUserScopeWritesCodeBuddyMCPJSON pins the user-scope path:
+// CodeBuddy reads ~/.codebuddy/.mcp.json, so home scope must keep using it.
+func TestInjectCodeBuddyUserScopeWritesCodeBuddyMCPJSON(t *testing.T) {
+	home := t.TempDir()
+
+	if _, err := Inject(home, home, codebuddyAdapter()); err != nil {
+		t.Fatalf("Inject() error = %v", err)
+	}
+
+	readMCPServersContext7Entry(t, filepath.Join(home, ".codebuddy", ".mcp.json"))
+	if _, err := os.Stat(filepath.Join(home, ".mcp.json")); !os.IsNotExist(err) {
+		t.Fatalf("user scope must not write <home>/.mcp.json; stat err = %v", err)
 	}
 }
 

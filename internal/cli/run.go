@@ -4068,6 +4068,12 @@ func componentPathsWithWorkspaceScoped(homeDir, workspaceDir string, scope Insta
 					paths = append(paths, p)
 				}
 			case model.StrategyMCPConfigFile:
+				// CodeBuddy project scope loads MCP servers from
+				// <project-root>/.mcp.json, not .codebuddy/.mcp.json.
+				if adapter.Agent() == model.AgentCodeBuddy && targetDir != homeDir {
+					paths = append(paths, filepath.Join(targetDir, ".mcp.json"))
+					break
+				}
 				if p := adapter.MCPConfigPath(targetDir, "engram"); p != "" {
 					paths = append(paths, p)
 				}
@@ -4175,6 +4181,12 @@ func componentPathsWithWorkspaceScoped(homeDir, workspaceDir string, scope Insta
 					paths = append(paths, p)
 				}
 			case model.StrategyMCPConfigFile:
+				// CodeBuddy project scope loads MCP servers from
+				// <project-root>/.mcp.json, not .codebuddy/.mcp.json.
+				if adapter.Agent() == model.AgentCodeBuddy && targetDir != homeDir {
+					paths = append(paths, filepath.Join(targetDir, ".mcp.json"))
+					break
+				}
 				if p := adapter.MCPConfigPath(targetDir, "context7"); p != "" {
 					paths = append(paths, p)
 				}

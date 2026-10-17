@@ -777,6 +777,11 @@ func injectWithOptions(configHomeDir, promptDir string, adapter agents.Adapter, 
 
 	case model.StrategyMCPConfigFile:
 		mcpPath := adapter.MCPConfigPath(configHomeDir, "engram")
+		// CodeBuddy reads project-scoped MCP servers from <project>/.mcp.json;
+		// .codebuddy/.mcp.json only exists at user scope (~/.codebuddy/.mcp.json).
+		if adapter.Agent() == model.AgentCodeBuddy && !userScope && configHomeDir != "" {
+			mcpPath = filepath.Join(configHomeDir, ".mcp.json")
+		}
 		if mcpPath == "" {
 			break
 		}
