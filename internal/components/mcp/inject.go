@@ -48,12 +48,19 @@ func InjectAtSettingsPath(homeDir, targetDir string, adapter agents.Adapter, sel
 			if targetDir == homeDir {
 				return injectClaudeUserConfig(homeDir, adapter)
 			}
-			return injectClaudeWorkspaceMCPJSON(targetDir, adapter)
+			return injectWorkspaceMCPJSON(targetDir, adapter)
 		}
 		return injectSeparateFile(targetDir, adapter)
 	case model.StrategyMergeIntoSettings:
 		return injectMergeIntoSettings(targetDir, adapter, selectedSettingsPath)
 	case model.StrategyMCPConfigFile:
+		// CodeBuddy reads project-scoped MCP servers from <project>/.mcp.json,
+		// not from <project>/.codebuddy/.mcp.json (that path only exists at user
+		// scope, ~/.codebuddy/.mcp.json). MCPConfigPath cannot express this
+		// because it only receives the target directory.
+		if adapter.Agent() == model.AgentCodeBuddy && targetDir != homeDir {
+			return injectWorkspaceMCPJSON(targetDir, adapter)
+		}
 		return injectMCPConfigFile(targetDir, adapter)
 	case model.StrategyTOMLFile:
 		return injectTOMLFile(targetDir, adapter)
@@ -305,14 +312,14 @@ func injectClaudeUserConfig(homeDir string, adapter agents.Adapter) (InjectionRe
 	return InjectionResult{Changed: changed, Files: files}, nil
 }
 
-// injectClaudeWorkspaceMCPJSON registers Context7 in <project-root>/.mcp.json,
-// the file Claude Code loads project-scoped MCP servers from. The merge
+// injectWorkspaceMCPJSON registers Context7 in <project-root>/.mcp.json, the
+// file Claude Code and CodeBuddy load project-scoped MCP servers from. The merge
 // preserves unrelated servers and any other top-level config the user authored,
 // and a backup is already snapshotted by the installer before this step runs.
 // It also removes the inert mcpServers block the legacy workspace path wrote
 // into <project-root>/.claude/settings.json, which Claude Code ignores for MCP
 // discovery (issue #2213).
-func injectClaudeWorkspaceMCPJSON(workspaceDir string, adapter agents.Adapter) (InjectionResult, error) {
+func injectWorkspaceMCPJSON(workspaceDir string, adapter agents.Adapter) (InjectionResult, error) {
 	mcpPath := filepath.Join(workspaceDir, ".mcp.json")
 	mcpWrite, err := mergeJSONFile(mcpPath, DefaultContext7OverlayJSON())
 	if err != nil {

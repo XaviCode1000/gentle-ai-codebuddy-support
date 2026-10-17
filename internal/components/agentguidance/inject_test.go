@@ -881,15 +881,87 @@ func TestInjectRoutingDeliversNoRetiredControlPlaneVocabulary(t *testing.T) {
 	}
 }
 
+// TestInjectRoutingCodeBuddyInstallsManagedMainAgent pins the delivery that
+// fixes CodeBuddy's 40,000-character memory cap: the orchestrator and routing
+// leave CODEBUDDY.md and become the managed main agent selected in settings,
+// while user content in the memory file survives and stays under the cap.
+func TestInjectRoutingCodeBuddyInstallsManagedMainAgent(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	adapter, err := agents.NewAdapter(model.AgentCodeBuddy)
+	if err != nil {
+		t.Fatalf("NewAdapter error = %v", err)
+	}
+	owner, ok := adapter.(interface {
+		OrchestratorAgentName() string
+		OrchestratorAgentFile(string) string
+	})
+	if !ok {
+		t.Fatal("codebuddy adapter does not expose the orchestrator agent target")
+	}
+
+	promptPath := adapter.SystemPromptFile(targetDir)
+	if err := os.MkdirAll(filepath.Dir(promptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "# My own notes\n\nHand-written rules that must survive.\n\n" +
+		managedOpenMarker(OrchestratorSectionID) + "\nstale orchestrator\n" + managedCloseMarker(OrchestratorSectionID) + "\n\n" +
+		managedOpenMarker(RoutingSectionID) + "\nstale routing\n" + managedCloseMarker(RoutingSectionID) + "\n"
+	if err := os.WriteFile(promptPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := InjectRoutingWithOptions(targetDir, model.AgentCodeBuddy, RoutingOptions{}); err != nil {
+		t.Fatalf("InjectRouting error = %v", err)
+	}
+
+	agentPath := owner.OrchestratorAgentFile(targetDir)
+	agentFile := readFile(t, agentPath)
+	if !strings.Contains(agentFile, "name: "+owner.OrchestratorAgentName()) {
+		t.Fatalf("agent file has no managed name:\n%s", agentFile)
+	}
+	if !strings.Contains(agentFile, "### ODD protocol") || !strings.Contains(agentFile, "<!-- gentle-ai:"+RoutingSectionID+" -->") {
+		t.Fatal("agent file does not carry the orchestrator and routing guidance")
+	}
+
+	var settings struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal([]byte(readFile(t, adapter.SettingsPath(targetDir))), &settings); err != nil {
+		t.Fatalf("decode settings: %v", err)
+	}
+	if settings.Agent != owner.OrchestratorAgentName() {
+		t.Fatalf("settings agent = %q, want %q", settings.Agent, owner.OrchestratorAgentName())
+	}
+
+	prompt := readFile(t, promptPath)
+	if !strings.Contains(prompt, "Hand-written rules that must survive.") {
+		t.Fatal("pruning removed unmanaged user content from the memory file")
+	}
+	if strings.Contains(prompt, "stale orchestrator") || strings.Contains(prompt, "stale routing") {
+		t.Fatalf("moved guidance survived in the memory file:\n%s", prompt)
+	}
+	if len(prompt) > 40000 {
+		t.Fatalf("memory file is %d characters, above the CodeBuddy cap", len(prompt))
+	}
+}
+
 // markdownSectionAgents lists every supported agent whose guidance is delivered
 // as a marker section inside its own system prompt file — that is, everything
-// except the Jinja router and the orchestrator-scoped OpenCode family.
+// except the Jinja router, the orchestrator-scoped OpenCode family and the
+// runtimes whose main thread loads a named agent definition.
 func markdownSectionAgents(t *testing.T) []model.AgentID {
 	t.Helper()
 
 	var selected []model.AgentID
 	for _, agent := range catalog.AllAgents() {
 		if agent.ID == model.AgentOpenCode || agent.ID == model.AgentKilocode {
+			continue
+		}
+		if agent.ID == model.AgentCodeBuddy {
+			// StrategyMarkdownSections, but the orchestrator ships as the managed
+			// main agent: CodeBuddy rejects memory files above 40,000 characters.
 			continue
 		}
 		if agent.ID == model.AgentConductor {
@@ -904,8 +976,8 @@ func markdownSectionAgents(t *testing.T) []model.AgentID {
 		}
 		selected = append(selected, agent.ID)
 	}
-	if len(selected) != supportedAgentCount-4 {
-		t.Fatalf("selected %d markdown-section agents, want %d", len(selected), supportedAgentCount-4)
+	if len(selected) != supportedAgentCount-5 {
+		t.Fatalf("selected %d markdown-section agents, want %d", len(selected), supportedAgentCount-5)
 	}
 	return selected
 }

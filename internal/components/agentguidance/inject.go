@@ -55,6 +55,15 @@ type templateBootstrapper interface {
 	BootstrapTemplate(homeDir string) error
 }
 
+// orchestratorAgentAdapter is the optional adapter capability for runtimes
+// whose main thread loads a named agent definition. The orchestrator becomes
+// that agent's system prompt, which escapes the per-file memory cap those
+// runtimes enforce on their instruction files.
+type orchestratorAgentAdapter interface {
+	OrchestratorAgentName() string
+	OrchestratorAgentFile(dir string) string
+}
+
 // RoutingOptions supplies a caller-resolved settings path for adapters whose
 // guidance is delivered through a managed orchestrator definition. The adapter
 // retains its normal targetDir-derived path when SettingsPath is empty.
@@ -161,6 +170,8 @@ func InjectRoutingWithOptions(targetDir string, agent model.AgentID, options Rou
 		return injectJinjaModule(targetDir, delivery, agent, merge)
 	case deliveryClaudeModules:
 		return commitOrchestratorCore(filepath.Dir(delivery.paths[0]), merge, modules)
+	case deliveryOrchestratorAgent:
+		return injectOrchestratorAgent(delivery, merge)
 	default:
 		return injectPromptSection(delivery, merge)
 	}
@@ -214,6 +225,10 @@ const (
 	// deliveryClaudeModules is the opt-in Claude global core plus modules;
 	// its paths are the core, every known module name and the ledger.
 	deliveryClaudeModules
+	// deliveryOrchestratorAgent writes the orchestrator into a managed main
+	// agent definition and points settings at it. Its paths are the agent
+	// file, the settings document and the prompt file it prunes.
+	deliveryOrchestratorAgent
 )
 
 // routingDelivery is the single resolution of how and where guidance reaches
@@ -226,6 +241,9 @@ type routingDelivery struct {
 	// template must be restored before the module is worth writing.
 	bootstrapper templateBootstrapper
 	paths        []string
+	// orchestratorAgentName is set only for deliveryOrchestratorAgent, whose
+	// settings document must name the managed main agent.
+	orchestratorAgentName string
 }
 
 // resolveRoutingDelivery selects the delivery strategy and its target paths.
@@ -244,6 +262,8 @@ func resolveRoutingDelivery(targetDir string, agent model.AgentID, options Routi
 		return routingDelivery{}, fmt.Errorf("resolve routing guidance adapter for %q: %w", agent, err)
 	}
 
+	orchestratorAgent, agentDelivery := orchestratorAgentDelivery(adapter)
+
 	switch {
 	case DeliversThroughOrchestratorPrompt(agent):
 		settingsPath := options.SettingsPath
@@ -254,6 +274,25 @@ func resolveRoutingDelivery(targetDir string, agent model.AgentID, options Routi
 			return routingDelivery{}, fmt.Errorf("%w: adapter %q exposes no settings path", ErrInvalidTarget, agent)
 		}
 		return routingDelivery{kind: deliveryOrchestratorPrompt, adapter: adapter, paths: []string{settingsPath}}, nil
+
+	case agentDelivery:
+		settingsPath := options.SettingsPath
+		if strings.TrimSpace(settingsPath) == "" {
+			settingsPath = adapter.SettingsPath(targetDir)
+		}
+		if strings.TrimSpace(settingsPath) == "" {
+			return routingDelivery{}, fmt.Errorf("%w: adapter %q exposes no settings path", ErrInvalidTarget, agent)
+		}
+		promptPath := adapter.SystemPromptFile(targetDir)
+		if strings.TrimSpace(promptPath) == "" {
+			return routingDelivery{}, fmt.Errorf("%w: adapter %q exposes no system prompt file", ErrInvalidTarget, agent)
+		}
+		return routingDelivery{
+			kind:                  deliveryOrchestratorAgent,
+			adapter:               adapter,
+			paths:                 []string{orchestratorAgent.OrchestratorAgentFile(targetDir), settingsPath, promptPath},
+			orchestratorAgentName: orchestratorAgent.OrchestratorAgentName(),
+		}, nil
 
 	case adapter.SystemPromptStrategy() == model.StrategyJinjaModules:
 		bootstrapper, ok := adapter.(templateBootstrapper)
@@ -296,6 +335,17 @@ func resolveRoutingDelivery(targetDir string, agent model.AgentID, options Routi
 // second copy of the agent list that could drift from this dispatch.
 func DeliversThroughOrchestratorPrompt(agent model.AgentID) bool {
 	return agent == model.AgentOpenCode || agent == model.AgentKilocode
+}
+
+// orchestratorAgentDelivery reports whether an adapter loads its main thread
+// system prompt from a named agent definition. The name is required: an empty
+// one could never be selected through settings.
+func orchestratorAgentDelivery(adapter agents.Adapter) (orchestratorAgentAdapter, bool) {
+	orchestratorAgent, ok := adapter.(orchestratorAgentAdapter)
+	if !ok || strings.TrimSpace(orchestratorAgent.OrchestratorAgentName()) == "" {
+		return nil, false
+	}
+	return orchestratorAgent, true
 }
 
 // guidanceMerge folds every managed guidance section into existing content.
@@ -390,6 +440,71 @@ func requireModuleIsIncluded(adapter agents.Adapter, agent model.AgentID, target
 		return fmt.Errorf("%w: router template %q does not include %q", ErrUnloadableGuidance, templatePath, routingModuleFile)
 	}
 	return nil
+}
+
+// orchestratorAgentDescription is the description CodeBuddy requires on every
+// agent definition. It is static so a reinstall produces byte-identical output.
+const orchestratorAgentDescription = "Gentle AI ODD orchestrator (Agent Teams Lite), managed by gentle-ai."
+
+// injectOrchestratorAgent delivers the orchestrator as the runtime's managed
+// main agent and selects it in settings.
+//
+// CodeBuddy rejects any memory file above 40,000 characters outright, which
+// silently dropped the whole orchestrator and routing block (and, with it,
+// delegation). Agent definitions carry no such cap and are applied to the main
+// thread through the settings `agent` key, so the same rendered content reaches
+// the model as its system prompt. The sections this delivery moves out of the
+// prompt file are pruned there: keeping them would duplicate guidance and could
+// push the memory file back over the cap, which rejects persona and memory too.
+func injectOrchestratorAgent(delivery routingDelivery, merge guidanceMerge) (Result, error) {
+	agentPath, settingsPath, promptPath := delivery.paths[0], delivery.paths[1], delivery.paths[2]
+
+	body := strings.TrimSpace(merge(""))
+	content := "---\nname: " + delivery.orchestratorAgentName +
+		"\ndescription: " + orchestratorAgentDescription +
+		"\nmodel: inherit\n---\n\n" + body + "\n"
+
+	agentWrite, err := filemerge.WriteFileAtomic(agentPath, []byte(content), filemerge.ExistingFileMode(agentPath, 0o644))
+	if err != nil {
+		return Result{}, fmt.Errorf("write orchestrator agent %q: %w", agentPath, err)
+	}
+
+	raw, err := readBytesOrEmpty(settingsPath)
+	if err != nil {
+		return Result{}, err
+	}
+	overlay, err := json.Marshal(map[string]any{"agent": delivery.orchestratorAgentName})
+	if err != nil {
+		return Result{}, fmt.Errorf("encode orchestrator agent overlay for %q: %w", settingsPath, err)
+	}
+	merged, err := filemerge.MergeJSONObjectsForPath(settingsPath, raw, overlay)
+	if err != nil {
+		return Result{}, fmt.Errorf("%w %q: %w", ErrUnreadableSettings, settingsPath, err)
+	}
+	settingsWrite, err := filemerge.WriteFileAtomic(settingsPath, merged, filemerge.ExistingFileMode(settingsPath, 0o644))
+	if err != nil {
+		return Result{}, err
+	}
+
+	promptBefore, err := readFileOrEmpty(promptPath)
+	if err != nil {
+		return Result{}, err
+	}
+	promptAfter := filemerge.InjectMarkdownSection(promptBefore, OrchestratorSectionID, "")
+	promptAfter = filemerge.InjectMarkdownSection(promptAfter, RoutingSectionID, "")
+	// A pre-upgrade install may still carry the v3.7.0 block; the orchestrator
+	// now lives in the agent file, so the legacy copy is removed rather than
+	// migrated.
+	promptAfter = filemerge.InjectMarkdownSection(promptAfter, legacyOrchestratorSectionID, "")
+	promptChanged := promptAfter != promptBefore
+	// Written unconditionally so the declared backup target is always the file
+	// the injector touched; Changed still tracks content, keeping re-installs
+	// idempotent.
+	if _, err := filemerge.WriteFileAtomic(promptPath, []byte(promptAfter), filemerge.ExistingFileMode(promptPath, 0o644)); err != nil {
+		return Result{}, err
+	}
+
+	return Result{Changed: agentWrite.Changed || settingsWrite.Changed || promptChanged, Files: delivery.paths}, nil
 }
 
 // injectOrchestratorPrompt delivers guidance inside the managed orchestrator

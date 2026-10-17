@@ -959,6 +959,15 @@ func (s *Service) componentOperations(adapter agents.Adapter, componentID model.
 
 	switch componentID {
 	case model.ComponentPersona:
+		if orchestratorAgent, ok := adapter.(orchestratorAgentOwner); ok {
+			agentPath := orchestratorAgent.OrchestratorAgentFile(homeDir)
+			targets = append(targets, agentPath)
+			ops = append(ops, removeFile(agentPath))
+			ops = append(ops, removeDirIfEmpty(filepath.Dir(agentPath)))
+			settingsPath := adapter.SettingsPath(homeDir)
+			targets = append(targets, settingsPath)
+			ops = append(ops, removeJSONStringIfValue(settingsPath, "agent", orchestratorAgent.OrchestratorAgentName()))
+		}
 		if adapter.Agent() == model.AgentOpenCode || adapter.Agent() == model.AgentKilocode {
 			for _, path := range settingsTargets(homeDir, adapter) {
 				targets = append(targets, path)
@@ -970,6 +979,11 @@ func (s *Service) componentOperations(adapter agents.Adapter, componentID model.
 			targets = append(targets, path)
 			ops = append(ops, rewriteMarkdownFile(path, func(content string) (string, bool) {
 				updated, sectionsChanged := removeMarkdownSections(content, "persona")
+				if _, ok := adapter.(orchestratorAgentOwner); ok {
+					var guidanceChanged bool
+					updated, guidanceChanged = removeMarkdownSections(updated, agentguidance.OrchestratorSectionID, agentguidance.RoutingSectionID)
+					sectionsChanged = sectionsChanged || guidanceChanged
+				}
 				updated, personaChanged := removeManagedPersonaPreamble(updated)
 				return updated, sectionsChanged || personaChanged
 			}))
@@ -1233,6 +1247,63 @@ func rewriteMarkdownFile(path string, mutate func(content string) (string, bool)
 			}
 			_, err = filemerge.WriteFileAtomic(path, []byte(updated), 0o644)
 			if err != nil {
+				return false, false, err
+			}
+			return true, false, nil
+		},
+	}
+}
+
+// orchestratorAgentOwner is the optional adapter capability for runtimes that
+// install Gentle AI's orchestrator as a managed main agent.
+type orchestratorAgentOwner interface {
+	OrchestratorAgentName() string
+	OrchestratorAgentFile(dir string) string
+}
+
+// removeJSONStringIfValue deletes a top-level key only while its value still
+// matches want. A value the user replaced after install is not ours to delete.
+func removeJSONStringIfValue(path, key, want string) operation {
+	return operation{
+		typeID: opRewriteFile,
+		path:   path,
+		apply: func(path string) (bool, bool, error) {
+			raw, err := readManagedFile(path)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return false, false, nil
+				}
+				return false, false, fmt.Errorf("read json file %q: %w", path, err)
+			}
+			var doc map[string]any
+			if err := json.Unmarshal(raw, &doc); err != nil {
+				return false, false, fmt.Errorf("decode json file %q: %w", path, err)
+			}
+			current, ok := doc[key]
+			if !ok {
+				return false, false, nil
+			}
+			value, isString := current.(string)
+			if !isString || value != want {
+				return false, false, nil
+			}
+			delete(doc, key)
+			updated, err := json.MarshalIndent(doc, "", "  ")
+			if err != nil {
+				return false, false, fmt.Errorf("encode json file %q: %w", path, err)
+			}
+			updated = append(updated, '\n')
+			if jsonIsEmptyObject(updated) {
+				if err := removeFileIfExists(path); err != nil {
+					return false, false, err
+				}
+				return true, true, nil
+			}
+			perm := os.FileMode(0o644)
+			if info, statErr := os.Lstat(path); statErr == nil {
+				perm = info.Mode().Perm()
+			}
+			if _, err := filemerge.WriteFileAtomic(path, updated, perm); err != nil {
 				return false, false, err
 			}
 			return true, false, nil
