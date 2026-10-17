@@ -137,6 +137,21 @@ func (a *Adapter) CommandsDir(homeDir string) string {
 	return filepath.Join(ConfigPath(homeDir), "commands")
 }
 
+// OrchestratorAgentName is the managed main agent that carries Gentle AI's
+// orchestrator instructions. CodeBuddy applies an agent's system prompt to the
+// main thread through settings.json `agent`, and agent files have no memory
+// size cap, unlike CODEBUDDY.md (40,000 characters).
+const OrchestratorAgentName = "gentle-ai-orchestrator"
+
+// OrchestratorAgentName reports the managed main agent name.
+func (a *Adapter) OrchestratorAgentName() string { return OrchestratorAgentName }
+
+// OrchestratorAgentFile returns <config>/agents/gentle-ai-orchestrator.md for
+// the given config or workspace root.
+func (a *Adapter) OrchestratorAgentFile(dir string) string {
+	return filepath.Join(a.SubAgentsDir(dir), OrchestratorAgentName+".md")
+}
+
 // --- Sub-agent support ---
 //
 // CodeBuddy loads agent files from ~/.codebuddy/agents/*.md, with the same
