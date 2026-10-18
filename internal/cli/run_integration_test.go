@@ -2810,6 +2810,76 @@ func TestRunInstallWorkspaceScopeVerification(t *testing.T) {
 	}
 }
 
+// TestRunInstallWorkspaceScopeWritesProjectPermissions pins that a workspace
+// install writes the permission overlay to the project settings file the agent
+// loads, and leaves the global settings untouched. Without this, --scope
+// workspace produced an orchestrator binding in the project while the
+// permissions it depends on stayed behind in the user's home.
+func TestRunInstallWorkspaceScopeWritesProjectPermissions(t *testing.T) {
+	home := t.TempDir()
+	workspace := t.TempDir()
+
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current wd: %v", err)
+	}
+
+	restoreHome := osUserHomeDir
+	restoreCommand := runCommand
+	restoreLookPath := cmdLookPath
+	t.Cleanup(func() {
+		osUserHomeDir = restoreHome
+		runCommand = restoreCommand
+		cmdLookPath = restoreLookPath
+		if err := os.Chdir(originalCwd); err != nil {
+			t.Errorf("failed to restore working directory: %v", err)
+		}
+	})
+
+	osUserHomeDir = func() (string, error) { return home, nil }
+	runCommand = func(string, ...string) error { return nil }
+	cmdLookPath = func(name string) (string, error) { return "/usr/local/bin/" + name, nil }
+
+	if err := os.Chdir(workspace); err != nil {
+		t.Fatalf("failed to change working directory to temp workspace: %v", err)
+	}
+
+	result, err := RunInstall([]string{
+		"--scope", "workspace",
+		"--agent", "codebuddy",
+		"--component", "permissions",
+		"--preset", "custom",
+	}, system.DetectionResult{})
+	if err != nil {
+		t.Fatalf("RunInstall() error = %v", err)
+	}
+	if !result.Verify.Ready {
+		t.Fatalf("post-apply verification failed, report = %#v", result.Verify)
+	}
+
+	settingsPath := filepath.Join(workspace, ".codebuddy", "settings.json")
+	raw, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("workspace permission settings %q missing: %v", settingsPath, err)
+	}
+	var settings struct {
+		Permissions struct {
+			DefaultMode string `json:"defaultMode"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		t.Fatalf("decode %q: %v", settingsPath, err)
+	}
+	if settings.Permissions.DefaultMode != "bypassPermissions" {
+		t.Errorf("workspace permissions defaultMode = %q, want %q", settings.Permissions.DefaultMode, "bypassPermissions")
+	}
+
+	globalSettings := filepath.Join(home, ".codebuddy", "settings.json")
+	if _, err := os.Stat(globalSettings); err == nil {
+		t.Errorf("workspace install wrote global permission settings %q", globalSettings)
+	}
+}
+
 // TestRunInstall_Context7WorkspaceScope_PersistsToWorkspace verifies that executing
 // a real workspace operation with --scope workspace and Context7 component:
 //  1. Returns a successful result with verification ready.

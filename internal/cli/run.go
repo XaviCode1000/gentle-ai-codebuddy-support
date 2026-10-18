@@ -3330,11 +3330,12 @@ func (s componentApplyStep) Run() error {
 		return nil
 	case model.ComponentPermission:
 		for _, adapter := range adapters {
+			targetDir := componentInjectionDirScoped(s.homeDir, s.workspaceDir, s.scope, adapter)
 			var err error
 			if adapter.Agent() == model.AgentOpenCode {
 				_, err = permissions.InjectAtPath(openCodeLoadedSettingsPath(s.homeDir, s.workspaceDir, adapter), adapter)
 			} else {
-				_, err = permissions.Inject(s.homeDir, adapter)
+				_, err = permissions.Inject(targetDir, adapter)
 			}
 			if err != nil {
 				return fmt.Errorf("inject permissions for %q: %w", adapter.Agent(), err)
@@ -4234,7 +4235,7 @@ func componentPathsWithWorkspaceScoped(homeDir, workspaceDir string, scope Insta
 				}
 			}
 		case model.ComponentPermission:
-			p := permissions.TargetPath(homeDir, adapter)
+			p := permissions.TargetPath(targetDir, adapter)
 			if adapter.Agent() == model.AgentOpenCode {
 				p = openCodeLoadedSettingsPath(homeDir, workspaceDir, adapter)
 			}
@@ -4411,7 +4412,7 @@ func componentPathDir(homeDir, workspaceDir string, adapter agents.Adapter, comp
 
 func componentPathDirScoped(homeDir, workspaceDir string, scope InstallScope, adapter agents.Adapter, component model.ComponentID) string {
 	switch component {
-	case model.ComponentEngram, model.ComponentSDD, model.ComponentPersona, model.ComponentSkills, model.ComponentContext7:
+	case model.ComponentEngram, model.ComponentSDD, model.ComponentPersona, model.ComponentSkills, model.ComponentContext7, model.ComponentPermission:
 		return componentInjectionDirScoped(homeDir, workspaceDir, scope, adapter)
 	default:
 		return homeDir

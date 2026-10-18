@@ -1026,6 +1026,35 @@ func TestComponentPathsPermissionsIncludesAgentsWithInjectionTarget(t *testing.T
 	}
 }
 
+// TestComponentPathsPermissionsWorkspaceUsesProjectSettings pins the workspace
+// authority for the Permission component: a workspace install must declare the
+// settings file the agent actually loads from the project, never the global
+// one. Otherwise the declared verification/rollback path and the injected path
+// disagree, and a project-scoped install silently leaves its permissions behind.
+func TestComponentPathsPermissionsWorkspaceUsesProjectSettings(t *testing.T) {
+	home := t.TempDir()
+	workspace := t.TempDir()
+	adapters := resolveAdapters([]model.AgentID{
+		model.AgentClaudeCode,
+		model.AgentCodeBuddy,
+	})
+
+	paths := componentPathsWithWorkspaceScoped(home, workspace, ScopeWorkspace, model.Selection{}, adapters, model.ComponentPermission)
+
+	for _, adapter := range adapters {
+		want := adapter.SettingsPath(workspace)
+		if want == "" {
+			t.Fatalf("adapter %q exposes no settings path", adapter.Agent())
+		}
+		if !containsPath(paths, want) {
+			t.Fatalf("componentPaths(permissions,%s) missing workspace settings %q\npaths=%v", adapter.Agent(), want, paths)
+		}
+		if containsPath(paths, adapter.SettingsPath(home)) {
+			t.Fatalf("componentPaths(permissions,%s) declared the global settings under workspace scope\npaths=%v", adapter.Agent(), paths)
+		}
+	}
+}
+
 // TestComponentPathsEngramOpenClawUsesCanonicalSettingsPath asserts that the
 // engram component path for OpenClaw always resolves to the canonical
 // ~/.openclaw/openclaw.json and never to a workspace-scoped copy.
