@@ -1565,12 +1565,13 @@ func (s componentSyncStep) Run() error {
 	case model.ComponentPermission:
 		// Opt-in only — reached when --include-permissions is set.
 		for _, adapter := range adapters {
+			targetDir := componentInjectionDirScoped(s.homeDir, s.workspaceDir, s.scope, adapter)
 			var res permissions.InjectionResult
 			var err error
 			if adapter.Agent() == model.AgentOpenCode {
 				res, err = permissions.InjectAtPath(syncOpenCodeSettingsPath(s.homeDir, s.workspaceDir, s.scope, adapter), adapter)
 			} else {
-				res, err = permissions.Inject(s.homeDir, adapter)
+				res, err = permissions.Inject(targetDir, adapter)
 			}
 			if err != nil {
 				return fmt.Errorf("sync permissions for %q: %w", adapter.Agent(), err)
