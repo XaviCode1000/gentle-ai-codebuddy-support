@@ -229,6 +229,10 @@ func RunPreparedInstall(prepared PreparedInstall, detection system.DetectionResu
 		return InstallResult{}, err
 	}
 	piBackgroundProjection := preparePiBackgroundProjection(homeDir, &piBackground, containsAgent(resolved.Agents, model.AgentPi))
+	codebuddyBackground, err := resolveCodeBuddyBackgroundCLI(flags.CodeBuddyBackgroundSubagentsSet, flags.CodeBuddyBackgroundSubagents)
+	if err != nil {
+		return InstallResult{}, err
+	}
 
 	review := planner.BuildReviewPayload(input.Selection, resolved)
 	stagePlan := buildStagePlan(input.Selection, resolved)
@@ -286,6 +290,7 @@ func RunPreparedInstall(prepared PreparedInstall, detection system.DetectionResu
 	}
 	runtime.background = background
 	runtime.backgroundActivation = backgroundActivation
+	runtime.codebuddyBackground = codebuddyBackground
 	runtime.runtimeReady = backgroundActivation != nil && backgroundActivation.Capability().Ready()
 	runtime.piBackgroundProjection = piBackgroundProjection
 	runtime.piExcludedPackages = prepared.piExcludedPackages
@@ -769,6 +774,10 @@ type installRuntime struct {
 	runtimeReady         bool
 	backgroundActivation *opencodeactivation.ActivationPlan
 
+	// codebuddyBackground is the managed background-delegation policy for the
+	// CodeBuddy orchestrator agent; nil means the step defaults to enabled.
+	codebuddyBackground *bool
+
 	piBackgroundProjection *piBackgroundProjectionPlan
 	piExcludedPackages     []string
 	progress               pipeline.ProgressFunc
@@ -973,17 +982,18 @@ func (r *installRuntime) stagePlan() pipeline.StagePlan {
 	// components so their managed assets are in place before guidance is merged.
 	for _, agent := range r.resolved.Agents {
 		apply = append(apply, agentRoutingGuidanceStep{
-			codexPhaseModels: r.selection.CodexPhaseModelAssignments,
-			codexEfforts:     r.selection.CodexModelAssignments,
-			codexCarrils:     r.selection.CodexCarrilModelAssignments,
-			backgroundPolicy: r.backgroundActivation != nil && r.backgroundActivation.Capability().Ready() && r.background.Effective == model.OpenCodeBackgroundOn,
-			legacySDD:        false,
-			id:               "agent-guidance:" + string(agent),
-			agent:            agent,
-			homeDir:          r.homeDir,
-			workspaceDir:     r.workspaceDir,
-			scope:            r.scope,
-			claudeModules:    r.claudeOrchestratorModules,
+			codexPhaseModels:    r.selection.CodexPhaseModelAssignments,
+			codexEfforts:        r.selection.CodexModelAssignments,
+			codexCarrils:        r.selection.CodexCarrilModelAssignments,
+			backgroundPolicy:    r.backgroundActivation != nil && r.backgroundActivation.Capability().Ready() && r.background.Effective == model.OpenCodeBackgroundOn,
+			codebuddyBackground: r.codebuddyBackground,
+			legacySDD:           false,
+			id:                  "agent-guidance:" + string(agent),
+			agent:               agent,
+			homeDir:             r.homeDir,
+			workspaceDir:        r.workspaceDir,
+			scope:               r.scope,
+			claudeModules:       r.claudeOrchestratorModules,
 		})
 	}
 
@@ -1930,12 +1940,15 @@ type agentRoutingGuidanceStep struct {
 	codexEfforts     map[string]model.CodexEffort
 	codexCarrils     map[string]string
 	backgroundPolicy bool
-	legacySDD        bool
-	id               string
-	agent            model.AgentID
-	homeDir          string
-	workspaceDir     string
-	scope            InstallScope
+	// codebuddyBackground is the managed background-delegation policy for the
+	// CodeBuddy orchestrator agent; nil makes the step default to enabled.
+	codebuddyBackground *bool
+	legacySDD           bool
+	id                  string
+	agent               model.AgentID
+	homeDir             string
+	workspaceDir        string
+	scope               InstallScope
 
 	// claudeModules is install's explicit opt-in for the user-global Claude
 	// module pilot. Sync leaves it false and only continues an installed pilot.
@@ -2071,6 +2084,22 @@ func (s agentRoutingGuidanceStep) Run() error {
 		policy, err := agentguidance.ApplyOpenCodeBackgroundPolicy(options.SettingsPath, s.backgroundPolicy)
 		if err != nil {
 			return fmt.Errorf("apply OpenCode background policy: %w", err)
+		}
+		s.recordChanged(policy)
+	}
+	if s.agent == model.AgentCodeBuddy {
+		orchestratorAgent, ok := adapter.(interface{ OrchestratorAgentFile(string) string })
+		if !ok {
+			// refusal:by-design human-authority: the CodeBuddy adapter is contractually required to expose OrchestratorAgentFile; a missing method is a code defect a developer must fix, not a state the operator can resolve at runtime.
+			return fmt.Errorf("CodeBuddy adapter exposes no orchestrator agent path")
+		}
+		// An absent intent (nil) defaults to enabled: background delegation is
+		// the desired out-of-the-box behavior for CodeBuddy, so a plain install
+		// or sync turns it on unless the user explicitly opted out with =off.
+		enabled := s.codebuddyBackground == nil || *s.codebuddyBackground
+		policy, err := agentguidance.ApplyCodeBuddyBackgroundPolicy(orchestratorAgent.OrchestratorAgentFile(targetDir), enabled)
+		if err != nil {
+			return fmt.Errorf("apply CodeBuddy background policy: %w", err)
 		}
 		s.recordChanged(policy)
 	}

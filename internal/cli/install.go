@@ -24,6 +24,9 @@ type InstallFlags struct {
 	PiBackgroundSubagents    string
 	PiBackgroundSubagentsSet bool
 
+	CodeBuddyBackgroundSubagents    string
+	CodeBuddyBackgroundSubagentsSet bool
+
 	PiExcludePackages []string
 
 	ClaudeOrchestratorModules bool
@@ -49,6 +52,8 @@ FLAGS
   --pi-background-subagents=auto|on|off
                                      Project the resolved Pi background-subagent policy for gentle-pi; env: GENTLE_AI_PI_BACKGROUND_SUBAGENTS
                                      auto inherits managed on/off and never enables by itself; only managed policy files are ever overwritten
+  --codebuddy-background-subagents=on|off
+                                     Add or remove the managed background-delegation policy in the CodeBuddy orchestrator agent; env: GENTLE_AI_CODEBUDDY_BACKGROUND_SUBAGENTS
   --pi-exclude-package <list>        Skip these managed Pi packages (exact sources, e.g. npm:gentle-pi; not npm:gentle-engram)
                                      during the pi install (env: GENTLE_AI_PI_EXCLUDE_PACKAGES); not saved in state
   --claude-orchestrator-modules      Global Claude only: install the orchestrator as a core plus on-demand modules
@@ -86,6 +91,7 @@ func ParseInstallFlags(args []string) (InstallFlags, error) {
 	fs.StringVar(&opts.Channel, "channel", "", installChannelHelp)
 	fs.StringVar(&opts.OpenCodeBackgroundSubagents, "opencode-background-subagents", "", "--opencode-background-subagents=auto|on|off; env: GENTLE_AI_OPENCODE_BACKGROUND_SUBAGENTS; eligible versions use a managed launcher")
 	fs.StringVar(&opts.PiBackgroundSubagents, "pi-background-subagents", "", "--pi-background-subagents=auto|on|off; env: GENTLE_AI_PI_BACKGROUND_SUBAGENTS; the resolved policy is projected for gentle-pi")
+	fs.StringVar(&opts.CodeBuddyBackgroundSubagents, "codebuddy-background-subagents", "", "--codebuddy-background-subagents=on|off; env: GENTLE_AI_CODEBUDDY_BACKGROUND_SUBAGENTS; manages the orchestrator background-delegation policy")
 	registerListFlag(fs, "pi-exclude-package", &opts.PiExcludePackages)
 	fs.BoolVar(&opts.ClaudeOrchestratorModules, "claude-orchestrator-modules", false, "global Claude only: install the orchestrator as a core plus on-demand modules")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "preview plan without executing")
@@ -103,6 +109,8 @@ func ParseInstallFlags(args []string) (InstallFlags, error) {
 			opts.OpenCodeBackgroundSubagentsSet = true
 		case "pi-background-subagents":
 			opts.PiBackgroundSubagentsSet = true
+		case "codebuddy-background-subagents":
+			opts.CodeBuddyBackgroundSubagentsSet = true
 		}
 	})
 

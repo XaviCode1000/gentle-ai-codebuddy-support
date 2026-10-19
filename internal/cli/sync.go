@@ -61,11 +61,14 @@ type SyncFlags struct {
 
 	PiBackgroundSubagents    string
 	PiBackgroundSubagentsSet bool
-	skillsSet                bool
-	sddModeSet               bool
-	strictTDDSet             bool
-	permissionsSet           bool
-	themeSet                 bool
+
+	CodeBuddyBackgroundSubagents    string
+	CodeBuddyBackgroundSubagentsSet bool
+	skillsSet                       bool
+	sddModeSet                      bool
+	strictTDDSet                    bool
+	permissionsSet                  bool
+	themeSet                        bool
 }
 
 // SyncResult holds the outcome of a sync execution.
@@ -195,6 +198,7 @@ func ParseSyncFlags(args []string) (SyncFlags, error) {
 	fs.StringVar(&opts.Scope, "scope", "", "sync scope: global (default) or workspace — env: GENTLE_AI_INSTALL_SCOPE")
 	fs.StringVar(&opts.OpenCodeBackgroundSubagents, "opencode-background-subagents", "", "--opencode-background-subagents=auto|on|off; env: GENTLE_AI_OPENCODE_BACKGROUND_SUBAGENTS; eligible versions use a managed launcher")
 	fs.StringVar(&opts.PiBackgroundSubagents, "pi-background-subagents", "", "--pi-background-subagents=auto|on|off; env: GENTLE_AI_PI_BACKGROUND_SUBAGENTS; the resolved policy is projected for gentle-pi")
+	fs.StringVar(&opts.CodeBuddyBackgroundSubagents, "codebuddy-background-subagents", "", "--codebuddy-background-subagents=on|off; env: GENTLE_AI_CODEBUDDY_BACKGROUND_SUBAGENTS; manages the orchestrator background-delegation policy")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "preview plan without executing")
 
 	if err := fs.Parse(args); err != nil {
@@ -225,6 +229,8 @@ func ParseSyncFlags(args []string) (SyncFlags, error) {
 			opts.OpenCodeBackgroundSubagentsSet = true
 		case "pi-background-subagents":
 			opts.PiBackgroundSubagentsSet = true
+		case "codebuddy-background-subagents":
+			opts.CodeBuddyBackgroundSubagentsSet = true
 		}
 	})
 
@@ -257,6 +263,8 @@ FLAGS
   --pi-background-subagents=auto|on|off
                                      Project the resolved Pi background-subagent policy for gentle-pi; env: GENTLE_AI_PI_BACKGROUND_SUBAGENTS
                                      auto inherits managed on/off and never enables by itself; only managed policy files are ever overwritten
+  --codebuddy-background-subagents=on|off
+                                     Add or remove the managed background-delegation policy in the CodeBuddy orchestrator agent; env: GENTLE_AI_CODEBUDDY_BACKGROUND_SUBAGENTS
   --dry-run                          Preview plan without executing
   --help, -h                         Show this help
 `)
@@ -466,6 +474,10 @@ type syncRuntime struct {
 	backgroundActivation *opencodeactivation.ActivationPlan
 	runtimeReady         bool
 
+	// codebuddyBackground is the managed background-delegation policy for the
+	// CodeBuddy orchestrator agent; nil makes the step default to enabled.
+	codebuddyBackground *bool
+
 	piBackgroundProjection *piBackgroundProjectionPlan
 }
 
@@ -618,17 +630,18 @@ func (r *syncRuntime) stagePlan() pipeline.StagePlan {
 			continue
 		}
 		apply = append(apply, agentRoutingGuidanceStep{
-			codexPhaseModels: r.selection.CodexPhaseModelAssignments,
-			codexEfforts:     r.selection.CodexModelAssignments,
-			codexCarrils:     r.selection.CodexCarrilModelAssignments,
-			backgroundPolicy: r.backgroundPolicy,
-			legacySDD:        false,
-			id:               "sync:agent-guidance:" + string(agent),
-			agent:            agent,
-			homeDir:          r.homeDir,
-			workspaceDir:     r.workspaceDir,
-			scope:            r.scope,
-			changedFiles:     &r.changedFiles,
+			codexPhaseModels:    r.selection.CodexPhaseModelAssignments,
+			codexEfforts:        r.selection.CodexModelAssignments,
+			codexCarrils:        r.selection.CodexCarrilModelAssignments,
+			backgroundPolicy:    r.backgroundPolicy,
+			codebuddyBackground: r.codebuddyBackground,
+			legacySDD:           false,
+			id:                  "sync:agent-guidance:" + string(agent),
+			agent:               agent,
+			homeDir:             r.homeDir,
+			workspaceDir:        r.workspaceDir,
+			scope:               r.scope,
+			changedFiles:        &r.changedFiles,
 		})
 	}
 
@@ -2013,13 +2026,13 @@ func runSyncWithSelectionScopeAfterSkip(homeDir string, selection model.Selectio
 	if scope == ScopeGlobal {
 		preparePiBackgroundProjection(homeDir, &piBackground, containsAgent(selection.Agents, model.AgentPi))
 	}
-	return runSyncWithSelectionScope(homeDir, selection, scope, persistedState, persistedStateErr, background, piBackground)
+	return runSyncWithSelectionScope(homeDir, selection, scope, persistedState, persistedStateErr, background, piBackground, nil)
 }
 
 var syncStagePlan = func(runtime *syncRuntime) pipeline.StagePlan { return runtime.stagePlan() }
 var compareChangedSyncFiles = changedSyncFiles
 
-func runSyncWithSelectionScope(homeDir string, selection model.Selection, scope InstallScope, persistedState state.InstallState, persistedStateErr error, background OpenCodeBackgroundResolution, piBackground PiBackgroundResolution) (SyncResult, error) {
+func runSyncWithSelectionScope(homeDir string, selection model.Selection, scope InstallScope, persistedState state.InstallState, persistedStateErr error, background OpenCodeBackgroundResolution, piBackground PiBackgroundResolution, codebuddyBackground *bool) (SyncResult, error) {
 	agentIDs := selection.Agents
 	// The caller's preflight snapshot and its read error drive this sync, so
 	// background plans and persona resolve from one read (#1677). The alias
@@ -2084,6 +2097,7 @@ func runSyncWithSelectionScope(homeDir string, selection model.Selection, scope 
 		rt.backgroundPolicy = background.Effective == model.OpenCodeBackgroundOn
 	}
 	rt.piBackgroundProjection = piBackground.projectionPlan
+	rt.codebuddyBackground = codebuddyBackground
 
 	stagePlan := syncStagePlan(rt)
 	result.Plan = stagePlan
@@ -2280,6 +2294,10 @@ func RunSync(args []string) (SyncResult, error) {
 	if err != nil {
 		return SyncResult{Agents: agentIDs, Selection: selection}, err
 	}
+	codebuddyBackground, err := resolveCodeBuddyBackgroundCLI(flags.CodeBuddyBackgroundSubagentsSet, flags.CodeBuddyBackgroundSubagents)
+	if err != nil {
+		return SyncResult{Agents: agentIDs, Selection: selection}, err
+	}
 	RestorePersistedSelection(&selection, persistedState, flags)
 	restoreCodexServiceTier(&selection, persistedState)
 	restorePersistedCommunityTools(homeDir, &selection, persistedState)
@@ -2374,6 +2392,7 @@ func RunSync(args []string) (SyncResult, error) {
 		}
 		defer rt.state.cleanupCompatibilityTransaction()
 		defer rt.state.cleanupRollbackSnapshot()
+		rt.codebuddyBackground = codebuddyBackground
 		if scope == ScopeGlobal {
 			backgroundActivation, activationErr := prepareOpenCodeBackgroundActivation(homeDir, &background, containsAgent(agentIDs, model.AgentOpenCode))
 			if activationErr != nil {
@@ -2421,7 +2440,7 @@ func RunSync(args []string) (SyncResult, error) {
 		background.activationPlan = backgroundActivation
 		preparePiBackgroundProjection(homeDir, &piBackground, containsAgent(agentIDs, model.AgentPi))
 	}
-	result, err := runSyncWithSelectionScope(homeDir, selection, scope, persistedState, persistedStateErr, background, piBackground)
+	result, err := runSyncWithSelectionScope(homeDir, selection, scope, persistedState, persistedStateErr, background, piBackground, codebuddyBackground)
 	if err != nil {
 		return finishPartialSync(result, err, skipped)
 	}

@@ -5320,7 +5320,7 @@ func TestRunSyncWithSelectionScopeUsesCapturedPersistedState(t *testing.T) {
 			captured, capturedErr := state.Read(home)
 			mustWriteFile(t, state.Path(home), []byte(tc.later))
 
-			result, err := runSyncWithSelectionScope(home, model.Selection{}, tc.scope, captured, capturedErr, OpenCodeBackgroundResolution{}, PiBackgroundResolution{})
+			result, err := runSyncWithSelectionScope(home, model.Selection{}, tc.scope, captured, capturedErr, OpenCodeBackgroundResolution{}, PiBackgroundResolution{}, nil)
 			if err != nil {
 				t.Fatalf("runSyncWithSelectionScope() error = %v", err)
 			}
@@ -5342,7 +5342,7 @@ func TestRunSyncWithSelectionScopeKeepsCapturedReadError(t *testing.T) {
 	later := `{"persona":"neutral"}`
 	mustWriteFile(t, state.Path(home), []byte(later))
 
-	_, err := runSyncWithSelectionScope(home, model.Selection{}, ScopeGlobal, captured, capturedErr, OpenCodeBackgroundResolution{}, PiBackgroundResolution{})
+	_, err := runSyncWithSelectionScope(home, model.Selection{}, ScopeGlobal, captured, capturedErr, OpenCodeBackgroundResolution{}, PiBackgroundResolution{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "read persisted installation state") {
 		t.Fatalf("runSyncWithSelectionScope() error = %v, want captured read error", err)
 	}
