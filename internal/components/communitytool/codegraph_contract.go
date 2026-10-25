@@ -59,6 +59,10 @@ var codeGraphCompatibilityTable = map[model.AgentID]codeGraphCompatibility{
 	model.AgentCodeBuddy: excludedCompatibility(model.AgentCodeBuddy),
 }
 
+func init() {
+	codeGraphCompatibilityTable[model.AgentGitHubCopilotCLI] = nativeCompatibility(model.AgentGitHubCopilotCLI, "copilot-cli")
+}
+
 func nativeCompatibility(id model.AgentID, target string) codeGraphCompatibility {
 	return codeGraphCompatibility{Agent: id, Strategy: codeGraphNative, Target: target, OwnedPaths: codeGraphOwnedPaths, Postcondition: codeGraphPostcondition}
 }
