@@ -27,7 +27,7 @@ Gentle AI configures agents you already have; it does not install an AI agent fo
 | <a id="pi"></a>Pi | `pi` | Package-owned runtime through Gentle Shell; see [Pi](pi.md) |
 | <a id="hermes"></a>Hermes | `hermes` | Ephemeral `delegate_task` workers, skills and MCP |
 | <a id="conductor"></a>Conductor | `conductor` | Workspace orchestrator that inherits Claude Code configuration; detection and catalog only — no managed writes |
-| <a id="codebuddy"></a>CodeBuddy | `codebuddy` | Native subagents, skills, slash commands, output styles and MCP; Judgment Day agents; Claude Code–compatible layout (`~/.codebuddy`, `CODEBUDDY.md`) |
+| <a id="codebuddy"></a>CodeBuddy | `codebuddy` | Native subagents, skills, slash commands, output styles and MCP; Judgment Day agents; Claude Code–compatible layout (`~/.codebuddy`, `CODEBUDDY.md`). POSIX-installed hook commands invoke the installing binary; CodeBuddy 2.175+ additionally discovers `AGENTS.md` up the directory tree, which gentle-ai leaves native (`memory.parentDiscovery: false` / `CODEBUDDY_DISABLE_PARENT_MEMORY=1` opts out) |
 
 ## Agent guidance and ownership
 
