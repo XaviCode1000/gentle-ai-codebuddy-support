@@ -13,6 +13,9 @@ type UserInstallRequest struct {
 	Destination, Mode, SharedPrefix, SharedAgent, Confirmation string
 	Channel                                                    string
 	Experience                                                 *UserExperience `json:",omitempty"`
+	// Scope carries the canonical component scope (see user_components.go);
+	// the Windows update flow consumes it like the Unix flow.
+	Scope string `json:",omitempty"`
 }
 
 func UserInstallChannel(channel string) (string, error) {
@@ -26,7 +29,11 @@ func UserInstallChannel(channel string) (string, error) {
 }
 
 func userConfirmation(req UserInstallRequest, identity string) string {
-	data, err := userExperienceConfirmationData([]string{req.Destination, req.Mode, req.SharedPrefix, req.SharedAgent, req.Channel, identity}, req.Experience)
+	fields := []string{req.Destination, req.Mode, req.SharedPrefix, req.SharedAgent, req.Channel, identity}
+	if req.Scope != "" {
+		fields = append(fields, req.Scope)
+	}
+	data, err := userExperienceConfirmationData(fields, req.Experience)
 	if err != nil {
 		return ""
 	}
@@ -34,7 +41,7 @@ func userConfirmation(req UserInstallRequest, identity string) string {
 }
 
 func UserInstallFromEntry(args []string) (UserInstallRequest, error) {
-	args, profile, err := userEntryExperience(args)
+	args, profile, scope, err := userEntryExperience(args)
 	if err != nil {
 		return UserInstallRequest{}, err
 	}
@@ -58,5 +65,5 @@ func UserInstallFromEntry(args []string) (UserInstallRequest, error) {
 	if profile != nil && profile.SDKSource == "main-preview" {
 		channel = userChannelMain
 	}
-	return UserInstallRequest{Destination: args[0], Mode: args[1], SharedPrefix: args[2], SharedAgent: args[3], Confirmation: args[4], Channel: channel, Experience: profile}, nil
+	return UserInstallRequest{Destination: args[0], Mode: args[1], SharedPrefix: args[2], SharedAgent: args[3], Confirmation: args[4], Channel: channel, Experience: profile, Scope: scope}, nil
 }
