@@ -145,6 +145,42 @@ func TestCodeBuddyHookCommandsBakeTheInstallingBinary(t *testing.T) {
 	})
 }
 
+// TestManagedHookRecognitionCoversRecordedBinaryForms pins that a managed hook
+// is recognized however the installing binary was recorded: plain name,
+// double-quoted absolute path, or the unquoted absolute path an older install
+// wrote — and that foreign binaries are not managed.
+func TestManagedHookRecognitionCoversRecordedBinaryForms(t *testing.T) {
+	managed := []string{
+		"gentle-ai review stop-hook --agent codebuddy",
+		`"` + fakeInstalledBinary + `" review stop-hook --agent codebuddy`,
+		fakeInstalledBinary + ` review stop-hook --agent codebuddy`,
+		`sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`,
+		`sh -c '"` + fakeInstalledBinary + `" skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`,
+		`sh -c '` + fakeInstalledBinary + ` skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`,
+	}
+	for _, command := range managed {
+		if !IsManagedHookCommand(command) {
+			t.Fatalf("managed command not recognized: %q", command)
+		}
+		wantFamily := "review"
+		if strings.Contains(command, "skill-registry") {
+			wantFamily = "skill-registry"
+		}
+		if !IsManagedHookFamily(command, wantFamily) {
+			t.Fatalf("family %q not recognized for %q", wantFamily, command)
+		}
+	}
+	for _, foreign := range []string{
+		"/opt/other-tool review stop-hook --agent codebuddy",
+		`sh -c '/opt/other-tool skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`,
+		"echo hello",
+	} {
+		if IsManagedHookCommand(foreign) {
+			t.Fatalf("foreign command wrongly managed: %q", foreign)
+		}
+	}
+}
+
 // TestCodeBuddyRetainedHooksRetireBareCommands upgrades a settings file that a
 // path-unaware version installed: the plain-name review and telemetry hooks
 // are replaced by the baked-path forms, not accumulated beside them.

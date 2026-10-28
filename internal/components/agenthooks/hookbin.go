@@ -50,8 +50,9 @@ func IsManagedHookFamily(command, family string) bool {
 }
 
 // hookInvocationBody strips the wrappers installed commands are built with:
-// the POSIX `sh -c '...'` wrapper, a leading double-quoted absolute path and
-// the plain binary name.
+// the POSIX `sh -c '...'` wrapper, a leading binary token — double-quoted
+// absolute path, unquoted absolute path (an older install form), or the plain
+// name.
 func hookInvocationBody(command string) string {
 	if inner, ok := strings.CutPrefix(command, `sh -c '`); ok && strings.HasSuffix(inner, "'") {
 		command = strings.TrimSuffix(inner, "'")
@@ -60,6 +61,9 @@ func hookInvocationBody(command string) string {
 		if end := strings.Index(rest, `"`); end >= 0 {
 			command = strings.TrimSpace(rest[end+1:])
 		}
+	}
+	if head, rest, ok := strings.Cut(command, " "); ok && strings.HasSuffix(head, "/gentle-ai") {
+		command = rest
 	}
 	return strings.TrimPrefix(command, "gentle-ai ")
 }
