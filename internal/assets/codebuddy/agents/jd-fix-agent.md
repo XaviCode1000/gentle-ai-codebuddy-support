@@ -3,6 +3,7 @@ name: jd-fix-agent
 description: >
   Surgical fix agent for judgment-day protocol. Applies only confirmed fixes
   from the verdict synthesis. Triggered by the orchestrator after judges agree on issues.
+disable-model-invocation: true
 model: inherit
 tools: Read, Edit, Write, Glob, Grep, Bash, ToolSearch, DeferExecuteTool, mcp__engram__mem_search, mcp__engram__mem_get_observation, mcp__engram__mem_save, mcp__engram__mem_update
 ---

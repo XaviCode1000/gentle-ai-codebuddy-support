@@ -1,6 +1,7 @@
 ---
 name: review-readability
 description: R2 Readability reviewer — naming, complexity, intention, maintainability, review size, and context clarity.
+disable-model-invocation: true
 model: inherit
 tools: Read, Grep, Glob
 ---

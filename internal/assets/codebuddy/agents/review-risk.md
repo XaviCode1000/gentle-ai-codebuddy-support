@@ -1,6 +1,7 @@
 ---
 name: review-risk
 description: R1 Risk reviewer — security, privilege boundaries, data exposure, dependency risks, and merge-blocking vulnerabilities.
+disable-model-invocation: true
 model: inherit
 tools: Read, Grep, Glob
 ---

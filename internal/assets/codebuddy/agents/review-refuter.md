@@ -1,6 +1,7 @@
 ---
 name: review-refuter
 description: Detached read-only refuter for one transaction-wide batch of inferential severe findings.
+disable-model-invocation: true
 model: inherit
 tools: Read, Grep, Glob
 ---

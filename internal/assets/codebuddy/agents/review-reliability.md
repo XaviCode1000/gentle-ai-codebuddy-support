@@ -1,6 +1,7 @@
 ---
 name: review-reliability
 description: R3 Reliability reviewer — behavior-first tests, coverage value, edge cases, determinism, contracts, and regressions.
+disable-model-invocation: true
 model: inherit
 tools: Read, Grep, Glob
 ---
