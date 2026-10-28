@@ -3,6 +3,7 @@ package agenthooks
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/gentleman-programming/gentle-ai/v4/internal/agents"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/filemerge"
@@ -13,7 +14,16 @@ import (
 // of SDD. It serves Claude Code and CodeBuddy Code: both read the same hooks
 // shape from settings.json, with one schema difference — CodeBuddy's async
 // hooks take an `asyncTimeout` key where Claude takes `timeout`.
+//
+// CodeBuddy commands bake the binary token resolved by HookBinaryFor, so the
+// hooks reach the gentle-ai build that carried the installed agent support
+// even when a PATH lookup would resolve to an older global install. Claude
+// keeps plain PATH resolution.
 func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result, error) {
+	return installRetainedClaudeHooks(homeDir, adapter, HookBinaryFor(runtime.GOOS))
+}
+
+func installRetainedClaudeHooks(homeDir string, adapter agents.Adapter, binary string) (Result, error) {
 	agent := adapter.Agent()
 	if agent != model.AgentClaudeCode && agent != model.AgentCodeBuddy {
 		return Result{}, nil
@@ -52,10 +62,13 @@ func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result,
 		hooks = map[string]any{}
 	}
 	telemetryRuntime := "claude"
+	binaryToken := "gentle-ai"
 	if agent == model.AgentCodeBuddy {
 		telemetryRuntime = "codebuddy"
+		binaryToken = hookCommandToken(binary)
 	}
-	command := fmt.Sprintf("gentle-ai review stop-hook --agent %s", adapter.Agent())
+	command := binaryToken + " review stop-hook --agent " + string(agent)
+	telemetryCommand := binaryToken + " telemetry runtime " + telemetryRuntime + " --json"
 	entries := []struct {
 		key, matcher, command string
 		timeout               int
@@ -63,10 +76,31 @@ func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result,
 	}{
 		{"Stop", "", command, 60, false},
 		{"SessionStart", "startup|resume|clear|compact", command, 30, false},
-		{"SubagentStop", "", "gentle-ai telemetry runtime " + telemetryRuntime + " --json", 5, true},
-		{"Stop", "", "gentle-ai telemetry runtime " + telemetryRuntime + " --json", 5, true},
+		{"SubagentStop", "", telemetryCommand, 5, true},
+		{"Stop", "", telemetryCommand, 5, true},
 	}
 	changed := false
+	if binaryToken != "gentle-ai" {
+		// Retire managed review and telemetry hooks written with another
+		// binary token so switching install locations never accumulates
+		// stale gentle-ai hooks beside the canonical ones.
+		canonical := map[string]bool{command: true, telemetryCommand: true}
+		for _, key := range []string{"Stop", "SessionStart", "SubagentStop"} {
+			list, _ := hooks[key].([]any)
+			kept, pruned := pruneHookCommands(list, func(cmd string) bool {
+				return cmd != "" && !canonical[cmd] &&
+					(IsManagedHookFamily(cmd, "review") || IsManagedHookFamily(cmd, "telemetry"))
+			})
+			if pruned {
+				if len(kept) == 0 {
+					delete(hooks, key)
+				} else {
+					hooks[key] = kept
+				}
+				changed = true
+			}
+		}
+	}
 	for _, e := range entries {
 		raw, exists := hooks[e.key]
 		list, ok := raw.([]any)

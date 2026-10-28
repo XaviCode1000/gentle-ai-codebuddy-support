@@ -18,6 +18,7 @@ import (
 	"github.com/gentleman-programming/gentle-ai/v4/internal/assets"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/backup"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/agentguidance"
+	"github.com/gentleman-programming/gentle-ai/v4/internal/components/agenthooks"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/communitytool"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/engram"
 	"github.com/gentleman-programming/gentle-ai/v4/internal/components/filemerge"
@@ -1436,17 +1437,13 @@ func rewriteSkillRegistryHook(path string) operation {
 	}
 }
 
-// Only exact installed commands are removed; arbitrary user commands remain intact.
+// Only exact installed commands are removed: a hook is managed when its
+// invocation (subcommand and arguments) matches what gentle-ai installs,
+// regardless of whether the binary was recorded as the plain name or as the
+// absolute path of the installing executable. Arbitrary user commands remain
+// intact.
 func managedRetainedHookCommand(cmd string) bool {
-	return cmd == `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true'` ||
-		cmd == `sh -c 'gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'` ||
-		cmd == `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true` ||
-		cmd == `gentle-ai skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true` ||
-		cmd == "gentle-ai review stop-hook --agent "+string(model.AgentClaudeCode) ||
-		cmd == "gentle-ai review stop-hook --agent "+string(model.AgentCodeBuddy) ||
-		cmd == "gentle-ai telemetry runtime claude --json" ||
-		cmd == "gentle-ai telemetry runtime codebuddy --json" ||
-		cmd == "gentle-ai telemetry runtime codex --json"
+	return agenthooks.IsManagedHookCommand(cmd)
 }
 
 // removeSkillRegistryHook removes the managed hook commands. Strict JSON is
