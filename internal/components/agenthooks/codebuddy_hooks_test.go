@@ -81,7 +81,7 @@ func TestCodeBuddyHookCommandsBakeTheInstallingBinary(t *testing.T) {
 
 	t.Run("posix retained hooks", func(t *testing.T) {
 		home := t.TempDir()
-		result, err := installRetainedClaudeHooks(home, codeBuddyAdapter(t), fakeInstalledBinary)
+		result, err := installRetainedClaudeHooks(home, codeBuddyAdapter(t), fakeInstalledBinary, "")
 		if err != nil || !result.Changed {
 			t.Fatalf("install: %+v %v", result, err)
 		}
@@ -102,7 +102,7 @@ func TestCodeBuddyHookCommandsBakeTheInstallingBinary(t *testing.T) {
 
 	t.Run("posix skill registry", func(t *testing.T) {
 		home := t.TempDir()
-		result, err := installSkillRegistry(home, codeBuddyAdapter(t), "linux", fakeInstalledBinary)
+		result, err := installSkillRegistry(home, codeBuddyAdapter(t), "linux", fakeInstalledBinary, "")
 		if err != nil || !result.Changed {
 			t.Fatalf("install: %+v %v", result, err)
 		}
@@ -114,7 +114,7 @@ func TestCodeBuddyHookCommandsBakeTheInstallingBinary(t *testing.T) {
 
 	t.Run("claude keeps plain PATH resolution", func(t *testing.T) {
 		home := t.TempDir()
-		if _, err := installRetainedClaudeHooks(home, claudeAdapter(t), fakeInstalledBinary); err != nil {
+		if _, err := installRetainedClaudeHooks(home, claudeAdapter(t), fakeInstalledBinary, ""); err != nil {
 			t.Fatal(err)
 		}
 		commands := hookCommands(t, claudeAdapter(t).SettingsPath(home))
@@ -128,10 +128,10 @@ func TestCodeBuddyHookCommandsBakeTheInstallingBinary(t *testing.T) {
 
 	t.Run("windows keeps plain PATH resolution", func(t *testing.T) {
 		home := t.TempDir()
-		if _, err := installRetainedClaudeHooks(home, codeBuddyAdapter(t), "gentle-ai"); err != nil {
+		if _, err := installRetainedClaudeHooks(home, codeBuddyAdapter(t), "gentle-ai", ""); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := installSkillRegistry(home, codeBuddyAdapter(t), "windows", fakeInstalledBinary); err != nil {
+		if _, err := installSkillRegistry(home, codeBuddyAdapter(t), "windows", fakeInstalledBinary, ""); err != nil {
 			t.Fatal(err)
 		}
 		commands := hookCommands(t, codeBuddyAdapter(t).SettingsPath(home))
@@ -181,6 +181,117 @@ func TestManagedHookRecognitionCoversRecordedBinaryForms(t *testing.T) {
 	}
 }
 
+// TestWorkspaceInstallDefersToUserLevelHookCoverage pins the unification rule:
+// a workspace-scope CodeBuddy install removes its managed hooks when the
+// user-level settings already manage the same families, touches nothing else,
+// leaves the user-level file byte-identical, and stays idempotent. Claude
+// keeps per-scope hooks because its plain-name commands are portable.
+func TestWorkspaceInstallDefersToUserLevelHookCoverage(t *testing.T) {
+	userHome := t.TempDir()
+	userAdapter := codeBuddyAdapter(t)
+	userSettings := userAdapter.SettingsPath(userHome)
+	if err := os.MkdirAll(filepath.Dir(userSettings), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":` +
+		mustJSON(t, fakeInstalledBinary+` review stop-hook --agent codebuddy`) +
+		`},{"type":"command","command":` + mustJSON(t, fakeInstalledBinary+` telemetry runtime codebuddy --json`) +
+		`}]},{"matcher":"","hooks":[{"type":"command","command":"echo user keep"}]}],"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":` +
+		mustJSON(t, `sh -c '`+fakeInstalledBinary+` skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true'`) +
+		`}]}]}}`
+	if err := os.WriteFile(userSettings, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	userBefore, err := os.ReadFile(userSettings)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceHome := t.TempDir()
+	// A first hookless install leaves an unrelated hook behind to protect.
+	workspacePath := userAdapter.SettingsPath(workspaceHome)
+	if err := os.MkdirAll(filepath.Dir(workspacePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspacePath, []byte(`{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"echo workspace keep"}]}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installRetainedClaudeHooks(workspaceHome, userAdapter, fakeInstalledBinary, userSettings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSkillRegistry(workspaceHome, userAdapter, "linux", fakeInstalledBinary, userSettings); err != nil {
+		t.Fatal(err)
+	}
+	commands := hookCommands(t, workspacePath)
+	for event, family := range map[string]string{"Stop": "review", "SubagentStop": "telemetry"} {
+		for _, command := range commands[event] {
+			if IsManagedHookFamily(command, family) {
+				t.Fatalf("workspace %s hook survived under user-level coverage: %v", family, commands[event])
+			}
+		}
+	}
+	for _, command := range commands["UserPromptSubmit"] {
+		if IsManagedHookFamily(command, "skill-registry") {
+			t.Fatalf("workspace skill-registry hook survived under user-level coverage: %v", commands["UserPromptSubmit"])
+		}
+	}
+	if len(commands["Stop"]) != 1 || commands["Stop"][0] != "echo workspace keep" {
+		t.Fatalf("unrelated workspace hook lost: %v", commands["Stop"])
+	}
+	userAfter, err := os.ReadFile(userSettings)
+	if err != nil || string(userAfter) != string(userBefore) {
+		t.Fatalf("user-level settings changed: %v", err)
+	}
+	if _, err := installRetainedClaudeHooks(workspaceHome, userAdapter, fakeInstalledBinary, userSettings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSkillRegistry(workspaceHome, userAdapter, "linux", fakeInstalledBinary, userSettings); err != nil {
+		t.Fatal(err)
+	}
+	again := hookCommands(t, workspacePath)
+	if len(again["Stop"]) != 1 || again["Stop"][0] != "echo workspace keep" {
+		t.Fatalf("second install changed the workspace hooks: %v", again["Stop"])
+	}
+}
+
+// TestWorkspaceInstallWritesHooksWithoutUserCoverage pins the fallback: with
+// no user-level settings the workspace install writes its own hooks as before.
+func TestWorkspaceInstallWritesHooksWithoutUserCoverage(t *testing.T) {
+	workspaceHome := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "absent", "settings.json")
+	if _, err := installRetainedClaudeHooks(workspaceHome, codeBuddyAdapter(t), fakeInstalledBinary, missing); err != nil {
+		t.Fatal(err)
+	}
+	commands := hookCommands(t, codeBuddyAdapter(t).SettingsPath(workspaceHome))
+	if len(commands["Stop"]) == 0 {
+		t.Fatal("workspace install without user coverage wrote no hooks")
+	}
+}
+
+// TestClaudeWorkspaceInstallKeepsPerScopeHooks pins that the unification rule
+// is codebuddy-only: a Claude workspace install writes its hooks even when the
+// user level already covers the same families.
+func TestClaudeWorkspaceInstallKeepsPerScopeHooks(t *testing.T) {
+	userHome := t.TempDir()
+	userAdapter := claudeAdapter(t)
+	userSettings := userAdapter.SettingsPath(userHome)
+	if err := os.MkdirAll(filepath.Dir(userSettings), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"gentle-ai review stop-hook --agent claude-code","timeout":60}]}]}}`
+	if err := os.WriteFile(userSettings, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspaceHome := t.TempDir()
+	if _, err := installRetainedClaudeHooks(workspaceHome, userAdapter, "gentle-ai", userSettings); err != nil {
+		t.Fatal(err)
+	}
+	commands := hookCommands(t, userAdapter.SettingsPath(workspaceHome))
+	if len(commands["Stop"]) != 2 {
+		t.Fatalf("claude workspace install must stay per-scope: %v", commands["Stop"])
+	}
+}
+
 // TestCodeBuddyRetainedHooksRetireBareCommands upgrades a settings file that a
 // path-unaware version installed: the plain-name review and telemetry hooks
 // are replaced by the baked-path forms, not accumulated beside them.
@@ -195,7 +306,7 @@ func TestCodeBuddyRetainedHooksRetireBareCommands(t *testing.T) {
 	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := installRetainedClaudeHooks(home, adapter, fakeInstalledBinary)
+	result, err := installRetainedClaudeHooks(home, adapter, fakeInstalledBinary, "")
 	if err != nil || !result.Changed {
 		t.Fatalf("upgrade install: %+v %v", result, err)
 	}
@@ -211,7 +322,7 @@ func TestCodeBuddyRetainedHooksRetireBareCommands(t *testing.T) {
 	if got := countCommand(commands["Stop"], `"`+fakeInstalledBinary+"\" review stop-hook --agent codebuddy"); got != 1 {
 		t.Fatalf("baked review hook count = %d, want 1: %v", got, commands["Stop"])
 	}
-	second, err := installRetainedClaudeHooks(home, adapter, fakeInstalledBinary)
+	second, err := installRetainedClaudeHooks(home, adapter, fakeInstalledBinary, "")
 	if err != nil || second.Changed {
 		t.Fatalf("second install not idempotent: %+v %v", second, err)
 	}
@@ -232,7 +343,7 @@ func TestCodeBuddySkillRegistryRetiresBareShWrappedCommand(t *testing.T) {
 	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := installSkillRegistry(home, adapter, "linux", fakeInstalledBinary)
+	result, err := installSkillRegistry(home, adapter, "linux", fakeInstalledBinary, "")
 	if err != nil || !result.Changed {
 		t.Fatalf("upgrade install: %+v %v", result, err)
 	}
@@ -244,7 +355,7 @@ func TestCodeBuddySkillRegistryRetiresBareShWrappedCommand(t *testing.T) {
 	if countCommand(commands["UserPromptSubmit"], want) != 1 {
 		t.Fatalf("baked command missing: %v", commands["UserPromptSubmit"])
 	}
-	second, err := installSkillRegistry(home, adapter, "linux", fakeInstalledBinary)
+	second, err := installSkillRegistry(home, adapter, "linux", fakeInstalledBinary, "")
 	if err != nil || second.Changed {
 		t.Fatalf("second install not idempotent: %+v %v", second, err)
 	}
@@ -252,7 +363,7 @@ func TestCodeBuddySkillRegistryRetiresBareShWrappedCommand(t *testing.T) {
 	// With the plain-name token the legacy form stays canonical, the baked
 	// form is retired rather than accumulated, and the file is byte-stable
 	// across installs.
-	if _, err := installSkillRegistry(home, adapter, "linux", "gentle-ai"); err != nil {
+	if _, err := installSkillRegistry(home, adapter, "linux", "gentle-ai", ""); err != nil {
 		t.Fatal(err)
 	}
 	commands = hookCommands(t, path)
@@ -262,7 +373,7 @@ func TestCodeBuddySkillRegistryRetiresBareShWrappedCommand(t *testing.T) {
 	if countCommand(commands["UserPromptSubmit"], bare) != 1 {
 		t.Fatalf("plain-token install should restore the bare canonical form: %v", commands["UserPromptSubmit"])
 	}
-	third, err := installSkillRegistry(home, adapter, "linux", "gentle-ai")
+	third, err := installSkillRegistry(home, adapter, "linux", "gentle-ai", "")
 	if err != nil || third.Changed {
 		t.Fatalf("plain-token install not idempotent: %+v %v", third, err)
 	}

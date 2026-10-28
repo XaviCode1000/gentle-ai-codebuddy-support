@@ -1993,7 +1993,10 @@ func (s agentRoutingGuidanceStep) Run() error {
 
 	// Claude and CodeBuddy both load global and project settings (CodeBuddy's
 	// default setting sources are user,project,local). Keep their hooks within
-	// the selected scope without changing Codex's home-level hook delivery.
+	// the selected scope without changing Codex's home-level hook delivery;
+	// the codebuddy installers defer to user-level coverage when it already
+	// manages the same families, because their baked machine-local paths make
+	// workspace copies redundant duplicates the host would run twice.
 	hookRoot := s.homeDir
 	if adapter.Agent() == model.AgentClaudeCode || adapter.Agent() == model.AgentCodeBuddy {
 		hookRoot = ResolveAgentConfigDir(s.scope, s.homeDir, s.workspaceDir)

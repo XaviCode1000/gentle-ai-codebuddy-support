@@ -4,19 +4,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gentleman-programming/gentle-ai/v4/internal/agents"
+	"github.com/gentleman-programming/gentle-ai/v4/internal/model"
 )
 
 // managedHookInvocationBodies are the gentle-ai argument strings installed hook
 // commands are built from, independent of the binary token in front of them.
 // A hook command is recognized by its invocation, so upgrades can retire hooks
 // written by another binary location and uninstall can remove hooks without
-// knowing which binary wrote them.
+// knowing which binary wrote them. The agent arguments come from the model
+// constants: printed commands must not spell a runtime identity (issue #2440).
 var managedHookInvocationBodies = []string{
 	`skill-registry refresh --quiet --no-gitignore --cwd "$PWD" || true`,
 	`skill-registry refresh --quiet --no-gitignore --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" || true`,
 	`skill-registry refresh --quiet --no-gitignore --cwd "${CODEBUDDY_PROJECT_DIR:-$PWD}" || true`,
-	"review stop-hook --agent claude-code",
-	"review stop-hook --agent codebuddy",
+	"review stop-hook --agent " + string(model.AgentClaudeCode),
+	"review stop-hook --agent " + string(model.AgentCodeBuddy),
 	"telemetry runtime claude --json",
 	"telemetry runtime codebuddy --json",
 	"telemetry runtime codex --json",
@@ -98,6 +102,68 @@ func hookCommandToken(binary string) string {
 		return "gentle-ai"
 	}
 	return `"` + binary + `"`
+}
+
+// userLevelManagesFamilies reports which of the given hook families are
+// already managed by the decoded user-level settings document. CodeBuddy loads
+// user and project settings, so hooks managed at the user level make
+// workspace-scope copies redundant duplicates that the host would execute
+// twice.
+func userLevelManagesFamilies(root map[string]any, families []string) map[string]bool {
+	covered := make(map[string]bool, len(families))
+	hooks, ok := root["hooks"].(map[string]any)
+	if !ok {
+		return covered
+	}
+	for _, raw := range hooks {
+		entries, ok := raw.([]any)
+		if !ok {
+			continue
+		}
+		for _, entry := range entries {
+			item, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			list, ok := item["hooks"].([]any)
+			if !ok {
+				continue
+			}
+			for _, hook := range list {
+				h, ok := hook.(map[string]any)
+				if !ok {
+					continue
+				}
+				command, _ := h["command"].(string)
+				for _, family := range families {
+					if !covered[family] && IsManagedHookFamily(command, family) {
+						covered[family] = true
+					}
+				}
+			}
+		}
+	}
+	return covered
+}
+
+// userLevelSettingsPath returns the adapter's settings path under the real
+// user home, or "" when it cannot be resolved, so callers treat it as no
+// user-level coverage.
+func userLevelSettingsPath(adapter agents.Adapter) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return adapter.SettingsPath(home)
+}
+
+// sameCleanPath reports whether two non-empty paths name the same location
+// after cleaning, without resolving symlinks.
+func sameCleanPath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // pruneHookCommands removes hook commands matched by keep from the entries of

@@ -49,7 +49,7 @@ func TestClaudeSkillRegistryWindowsMigration(t *testing.T) {
 			if err := os.WriteFile(settingsPath, []byte(seed), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			result, err := installSkillRegistry(home, adapter, "windows", "gentle-ai")
+			result, err := installSkillRegistry(home, adapter, "windows", "gentle-ai", "")
 			if err != nil || !result.Changed {
 				t.Fatalf("first Windows install: %+v %v", result, err)
 			}
@@ -79,7 +79,7 @@ func TestClaudeSkillRegistryWindowsMigration(t *testing.T) {
 			if strings.Count(strings.Join(commands, "\n"), canonical) != 1 || strings.Contains(strings.Join(commands, "\n"), claudeRetiredSkillRegistryCommands[0]) {
 				t.Fatalf("canonical command missing or legacy command retained: %q", commands)
 			}
-			second, err := installSkillRegistry(home, adapter, "windows", "gentle-ai")
+			second, err := installSkillRegistry(home, adapter, "windows", "gentle-ai", "")
 			if err != nil || second.Changed {
 				t.Fatalf("second Windows install: %+v %v", second, err)
 			}

@@ -102,7 +102,10 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := InstallSkillRegistry(home, adapter)
+			// The internal installer with an explicit plain-name token and no
+			// user-level coverage pins the command strings deterministically;
+			// the public install defers to machine state for CodeBuddy.
+			result, err := installSkillRegistry(home, adapter, runtime.GOOS, "gentle-ai", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +133,7 @@ func TestSkillRegistryHooksWithoutSDD(t *testing.T) {
 			if hook["type"] != "command" || hook["command"] != command {
 				t.Fatalf("hook = %v, want exact %q", hook, command)
 			}
-			again, err := InstallSkillRegistry(home, adapter)
+			again, err := installSkillRegistry(home, adapter, runtime.GOOS, "gentle-ai", "")
 			if err != nil {
 				t.Fatal(err)
 			}

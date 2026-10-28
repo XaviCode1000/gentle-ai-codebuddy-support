@@ -69,10 +69,10 @@ func pruneSkillRegistryHooks(entries []any, retired []string) ([]any, bool) {
 
 // InstallSkillRegistry installs startup refresh hooks without selecting SDD.
 func InstallSkillRegistry(homeDir string, adapter agents.Adapter) (Result, error) {
-	return installSkillRegistry(homeDir, adapter, runtime.GOOS, HookBinaryFor(runtime.GOOS))
+	return installSkillRegistry(homeDir, adapter, runtime.GOOS, HookBinaryFor(runtime.GOOS), userLevelSettingsPath(adapter))
 }
 
-func installSkillRegistry(homeDir string, adapter agents.Adapter, platform, binary string) (Result, error) {
+func installSkillRegistry(homeDir string, adapter agents.Adapter, platform, binary, userSettingsPath string) (Result, error) {
 	var path, event, command string
 	switch adapter.Agent() {
 	case model.AgentCodex:
@@ -125,15 +125,30 @@ func installSkillRegistry(homeDir string, adapter agents.Adapter, platform, bina
 	// old-form hook beside the new one. Claude retires its exact prior
 	// literals. CodeBuddy retires every managed skill-registry invocation that
 	// is not the canonical command: its binary token can move between the
-	// plain name and different absolute paths across installs.
+	// plain name and different absolute paths across installs. Under
+	// user-level coverage every workspace copy goes: CodeBuddy loads user and
+	// project settings, so the copy would run twice.
+	coveredSkillRegistry := false
+	if adapter.Agent() == model.AgentCodeBuddy && userSettingsPath != "" && !sameCleanPath(path, userSettingsPath) {
+		if userData, readErr := os.ReadFile(userSettingsPath); readErr == nil {
+			if userRoot, decodeErr := decodeHookSettings(userData); decodeErr == nil {
+				coveredSkillRegistry = userLevelManagesFamilies(userRoot, []string{"skill-registry"})["skill-registry"]
+			}
+		}
+	}
 	pruned := false
 	if adapter.Agent() == model.AgentClaudeCode {
 		entries, pruned = pruneSkillRegistryHooks(entries, claudeRetiredSkillRegistryCommands)
 	}
 	if adapter.Agent() == model.AgentCodeBuddy {
 		entries, pruned = pruneHookCommands(entries, func(cmd string) bool {
-			return cmd != "" && cmd != command &&
-				IsManagedHookFamily(cmd, "skill-registry")
+			if cmd == "" || !IsManagedHookFamily(cmd, "skill-registry") {
+				return false
+			}
+			if coveredSkillRegistry {
+				return true
+			}
+			return cmd != command
 		})
 	}
 	if pruned {
@@ -143,19 +158,21 @@ func installSkillRegistry(homeDir string, adapter agents.Adapter, platform, bina
 			hooks[event] = entries
 		}
 	}
-	if claudeHookListContains(entries, command) {
-		if !pruned {
-			return Result{Files: []string{path}}, nil
+	if !coveredSkillRegistry {
+		if claudeHookListContains(entries, command) {
+			if !pruned {
+				return Result{Files: []string{path}}, nil
+			}
+		} else {
+			hook := map[string]any{"type": "command", "command": command}
+			entry := map[string]any{"matcher": "", "hooks": []any{hook}}
+			if adapter.Agent() == model.AgentCodex {
+				entry["matcher"] = "startup|resume|clear|compact"
+				hook["timeout"] = 30
+				hook["statusMessage"] = "Refreshing skill registry"
+			}
+			hooks[event] = append(entries, entry)
 		}
-	} else {
-		hook := map[string]any{"type": "command", "command": command}
-		entry := map[string]any{"matcher": "", "hooks": []any{hook}}
-		if adapter.Agent() == model.AgentCodex {
-			entry["matcher"] = "startup|resume|clear|compact"
-			hook["timeout"] = 30
-			hook["statusMessage"] = "Refreshing skill registry"
-		}
-		hooks[event] = append(entries, entry)
 	}
 	out, err := encodeHookSettings(data, root, hooks)
 	if err != nil {

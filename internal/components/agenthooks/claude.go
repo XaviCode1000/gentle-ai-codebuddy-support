@@ -20,10 +20,10 @@ import (
 // even when a PATH lookup would resolve to an older global install. Claude
 // keeps plain PATH resolution.
 func InstallRetainedClaudeHooks(homeDir string, adapter agents.Adapter) (Result, error) {
-	return installRetainedClaudeHooks(homeDir, adapter, HookBinaryFor(runtime.GOOS))
+	return installRetainedClaudeHooks(homeDir, adapter, HookBinaryFor(runtime.GOOS), userLevelSettingsPath(adapter))
 }
 
-func installRetainedClaudeHooks(homeDir string, adapter agents.Adapter, binary string) (Result, error) {
+func installRetainedClaudeHooks(homeDir string, adapter agents.Adapter, binary, userSettingsPath string) (Result, error) {
 	agent := adapter.Agent()
 	if agent != model.AgentClaudeCode && agent != model.AgentCodeBuddy {
 		return Result{}, nil
@@ -69,26 +69,51 @@ func installRetainedClaudeHooks(homeDir string, adapter agents.Adapter, binary s
 	}
 	command := binaryToken + " review stop-hook --agent " + string(agent)
 	telemetryCommand := binaryToken + " telemetry runtime " + telemetryRuntime + " --json"
+	// CodeBuddy loads user and project settings, so when the user level
+	// already manages a family the workspace copy is a duplicate the host
+	// would execute twice: defer to the user level and clean the workspace
+	// copy instead of writing a new one. Claude keeps per-scope hooks because
+	// its plain-name commands are portable across machines.
+	covered := map[string]bool{}
+	if agent == model.AgentCodeBuddy && userSettingsPath != "" && !sameCleanPath(path, userSettingsPath) {
+		if userData, readErr := os.ReadFile(userSettingsPath); readErr == nil {
+			if userRoot, decodeErr := decodeHookSettings(userData); decodeErr == nil {
+				covered = userLevelManagesFamilies(userRoot, []string{"review", "telemetry"})
+			}
+		}
+	}
 	entries := []struct {
 		key, matcher, command string
 		timeout               int
 		async                 bool
+		family                string
 	}{
-		{"Stop", "", command, 60, false},
-		{"SessionStart", "startup|resume|clear|compact", command, 30, false},
-		{"SubagentStop", "", telemetryCommand, 5, true},
-		{"Stop", "", telemetryCommand, 5, true},
+		{"Stop", "", command, 60, false, "review"},
+		{"SessionStart", "startup|resume|clear|compact", command, 30, false, "review"},
+		{"SubagentStop", "", telemetryCommand, 5, true, "telemetry"},
+		{"Stop", "", telemetryCommand, 5, true, "telemetry"},
 	}
 	changed := false
-	if binaryToken != "gentle-ai" {
-		// Retire managed review and telemetry hooks written with another
-		// binary token so switching install locations never accumulates
-		// stale gentle-ai hooks beside the canonical ones.
+	if binaryToken != "gentle-ai" || len(covered) > 0 {
+		// Retire managed review and telemetry hooks this install should not
+		// keep: another binary token's copies, and — under user-level
+		// coverage — every workspace copy of a covered family.
 		canonical := map[string]bool{command: true, telemetryCommand: true}
 		for _, key := range []string{"Stop", "SessionStart", "SubagentStop"} {
 			list, _ := hooks[key].([]any)
 			kept, pruned := pruneHookCommands(list, func(cmd string) bool {
-				return cmd != "" && !canonical[cmd] &&
+				if cmd == "" {
+					return false
+				}
+				for family := range covered {
+					if IsManagedHookFamily(cmd, family) {
+						return true
+					}
+				}
+				if binaryToken == "gentle-ai" {
+					return false
+				}
+				return !canonical[cmd] &&
 					(IsManagedHookFamily(cmd, "review") || IsManagedHookFamily(cmd, "telemetry"))
 			})
 			if pruned {
@@ -102,6 +127,9 @@ func installRetainedClaudeHooks(homeDir string, adapter agents.Adapter, binary s
 		}
 	}
 	for _, e := range entries {
+		if covered[e.family] {
+			continue
+		}
 		raw, exists := hooks[e.key]
 		list, ok := raw.([]any)
 		if exists && !ok {
