@@ -460,8 +460,14 @@ func injectOrchestratorAgent(delivery routingDelivery, merge guidanceMerge) (Res
 	agentPath, settingsPath, promptPath := delivery.paths[0], delivery.paths[1], delivery.paths[2]
 
 	body := strings.TrimSpace(merge(""))
+	// disable-model-invocation keeps the orchestrator out of the model's
+	// Agent-tool candidate list: CodeBuddy treats every agents/ file as
+	// dispatchable, and the main thread binds through settings.agent without
+	// consulting that list, so the flag removes only the role confusion of
+	// the orchestrator dispatching itself as a subagent.
 	content := "---\nname: " + delivery.orchestratorAgentName +
 		"\ndescription: " + orchestratorAgentDescription +
+		"\ndisable-model-invocation: true" +
 		"\nmodel: inherit\n---\n\n" + body + "\n"
 
 	agentWrite, err := filemerge.WriteFileAtomic(agentPath, []byte(content), filemerge.ExistingFileMode(agentPath, 0o644))

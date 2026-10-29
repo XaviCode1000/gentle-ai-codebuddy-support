@@ -1181,3 +1181,52 @@ func TestInjectRoutingFailsClosedOnUnsafeJSONCSettings(t *testing.T) {
 		})
 	}
 }
+
+// TestOrchestratorAgentFileIsNotModelInvocable pins that the managed main
+// agent definition carries disable-model-invocation: true. CodeBuddy treats
+// every file in agents/ as a dispatch candidate, so without the flag the
+// orchestrator is both the main thread (settings.agent) and a model-invocable
+// subagent — a role confusion the model can act on.
+func TestOrchestratorAgentFileIsNotModelInvocable(t *testing.T) {
+
+	adapter, err := agents.NewAdapter(model.AgentCodeBuddy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentAdapter, ok := adapter.(orchestratorAgentAdapter)
+	if !ok {
+		t.Fatal("codebuddy adapter must deliver the orchestrator as a managed agent")
+	}
+	dir := t.TempDir()
+	delivery := routingDelivery{
+		kind:                  deliveryOrchestratorAgent,
+		adapter:               adapter,
+		paths:                 []string{agentAdapter.OrchestratorAgentFile(dir), filepath.Join(dir, "settings.json"), filepath.Join(dir, "CODEBUDDY.md")},
+		orchestratorAgentName: agentAdapter.OrchestratorAgentName(),
+	}
+	result, err := injectOrchestratorAgent(delivery, func(string) string { return "# Orchestrator\n\nBody." })
+	if err != nil || !result.Changed {
+		t.Fatalf("inject: %+v %v", result, err)
+	}
+	content, err := os.ReadFile(delivery.paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "disable-model-invocation: true") {
+		t.Fatalf("orchestrator agent must not be a model dispatch candidate:\n%s", content)
+	}
+	if !strings.Contains(string(content), "model: inherit") || !strings.Contains(string(content), "name: gentle-ai-orchestrator") {
+		t.Fatalf("orchestrator frontmatter damaged:\n%s", content)
+	}
+	raw, err := os.ReadFile(delivery.paths[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["agent"] != "gentle-ai-orchestrator" {
+		t.Fatalf("settings binding lost: %s", raw)
+	}
+}
